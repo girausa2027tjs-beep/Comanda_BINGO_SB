@@ -384,7 +384,13 @@
     var lista = S.productos.slice();
     // En edición, también se muestran productos del pedido que hoy están inactivos.
     if (S.edit) S.edit.items.forEach(function (it) {
-      if (!S.prodMap[it.id]) lista.push({ id: it.id, nombre: it.nombre, precio: it.precio, foto: '', activo: false });
+      if (!S.prodMap[it.id]) lista.push({ id: it.id, nombre: it.nombre, precio: it.precio, foto: '', activo: false, grupo: it.grupo });
+    });
+    // Orden de venta: por estación de menor a mayor (sin estación al final), luego por nombre.
+    lista.sort(function (a, b) {
+      var ga = a.grupo == null || a.grupo === '' ? 1e9 : Number(a.grupo);
+      var gb = b.grupo == null || b.grupo === '' ? 1e9 : Number(b.grupo);
+      return ga - gb || norm(a.nombre).localeCompare(norm(b.nombre), 'es');
     });
     var q = norm($('#buscaProd').value);
     return q ? lista.filter(function (p) { return norm(p.nombre).indexOf(q) >= 0; }) : lista;
