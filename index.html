@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Comandas · Gira USA Monkeys</title>
+  <meta name="theme-color" content="#0f285d">
+  <link rel="icon" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <!-- ============ INGRESO ============ -->
+  <section id="vistaLogin" class="vista vista-login" hidden>
+    <div class="login-wrap">
+      <img src="assets/logo.png" alt="Gira USA Monkeys · Generación 2028 · TJSS" class="login-logo">
+      <form id="formLogin" class="tarjeta login-card" novalidate autocomplete="off">
+        <h1 class="titulo">Comandas</h1>
+        <p class="sub">Ingresa con tu curso y tu nombre</p>
+
+        <div class="segmento" role="radiogroup" aria-label="Perfil">
+          <label><input type="radio" name="perfil" value="vendedor" checked><span>Vendedor</span></label>
+          <label><input type="radio" name="perfil" value="admin"><span>Administrador</span></label>
+        </div>
+
+        <label class="campo">
+          <span>Curso</span>
+          <select id="selCurso" required><option value="">Cargando…</option></select>
+        </label>
+        <label class="campo">
+          <span>Alumno</span>
+          <select id="selAlumno" required disabled><option value="">Primero elige el curso</option></select>
+        </label>
+        <div class="campo">
+          <span>¿Quién está vendiendo?</span>
+          <div id="tiposUsuario" class="chips" role="radiogroup"></div>
+        </div>
+        <label class="campo">
+          <span>Contraseña <small>(segundo apellido del alumno)</small></span>
+          <input id="inpClave" type="password" required autocomplete="off" autocapitalize="none" spellcheck="false">
+        </label>
+        <p id="errLogin" class="error" role="alert"></p>
+        <button class="btn btn-rojo btn-grande" type="submit" id="btnIngresar">Ingresar</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ APP ============ -->
+  <div id="vistaApp" class="vista" hidden>
+    <header class="barra">
+      <img src="assets/logo.png" alt="" class="barra-logo">
+      <div class="barra-quien">
+        <strong id="lblUsuario"></strong>
+        <span id="lblPerfil"></span>
+      </div>
+      <button class="btn btn-icono" id="btnImpresora" title="Impresora" hidden>🖨️<span class="solo-ancho"> Impresora</span></button>
+      <button class="btn btn-icono" id="btnSalir" title="Salir">Salir</button>
+    </header>
+
+    <!-- -------- VENDEDOR -------- -->
+    <main id="vistaVendedor" class="contenedor" hidden>
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab activo" data-tab="venta" id="tabVenta">Nueva venta</button>
+        <button role="tab" class="tab" data-tab="mis" id="tabMis">Mis pedidos <span class="burbuja" id="cntMis">0</span></button>
+      </nav>
+
+      <section id="panelVenta" class="panel">
+        <div id="bannerEdicion" class="banner" hidden>
+          <span>Editando pedido <strong id="lblEditNum"></strong></span>
+          <button class="btn btn-borde btn-chico" id="btnCancelarEdicion" type="button">Cancelar edición</button>
+        </div>
+        <div class="tarjeta form-venta">
+          <label class="campo campo-mesa">
+            <span>N° de mesa *</span>
+            <input id="inpMesa" inputmode="numeric" maxlength="10" required placeholder="Ej: 7">
+          </label>
+          <label class="campo campo-cliente">
+            <span>Nombre del cliente *</span>
+            <input id="inpCliente" maxlength="60" required placeholder="Ej: Carolina">
+          </label>
+          <label class="campo campo-comentario">
+            <span>Comentario <small>(opcional, sale en el ticket)</small></span>
+            <input id="inpComentario" maxlength="120" placeholder="Ej: sin mayonesa, para llevar…">
+          </label>
+        </div>
+        <div class="buscador barra-acciones">
+          <input id="buscaProd" type="search" placeholder="Buscar producto…" aria-label="Buscar producto">
+          <button class="btn btn-borde btn-chico btn-actualizar" type="button" data-actualizar="productos" title="Volver a leer los productos de la planilla">↻ <span class="txt-largo">Actualizar productos</span><span class="txt-corto">Actualizar</span></button>
+        </div>
+        <div id="gridProductos" class="grid-productos" aria-live="polite"></div>
+      </section>
+
+      <section id="panelMis" class="panel" hidden>
+        <div class="barra-acciones barra-derecha">
+          <span class="actualizado-txt" id="lblActMis"></span>
+          <button class="btn btn-borde btn-chico btn-actualizar" type="button" data-actualizar="mis" title="Volver a leer tus pedidos de la planilla">↻ <span>Actualizar pedidos</span></button>
+        </div>
+        <div class="filtros" id="filtrosMis">
+          <button class="chip activo" data-f="todos">Todos <b class="n"></b></button>
+          <button class="chip" data-f="activos">En curso <b class="n"></b></button>
+          <button class="chip" data-f="Entregado">Entregados <b class="n"></b></button>
+          <button class="chip" data-f="Eliminado">Eliminados <b class="n"></b></button>
+        </div>
+        <div class="aviso-lista" id="avisoMis" hidden></div>
+        <div id="listaMis" class="lista-pedidos"><div class="vacio">Cargando pedidos…</div></div>
+      </section>
+
+      <div class="carrito" id="barraCarrito" hidden>
+        <div class="carrito-info">
+          <span id="carritoCant">0 productos</span>
+          <strong id="carritoTotal">$0</strong>
+        </div>
+        <button class="btn btn-rojo" id="btnRevisar">Revisar pedido</button>
+      </div>
+    </main>
+
+    <!-- -------- ADMINISTRADOR -------- -->
+    <main id="vistaAdmin" class="contenedor contenedor-ancho" hidden>
+      <div class="admin-cabeza">
+        <h2 class="titulo">Todos los pedidos</h2>
+        <div class="admin-controles">
+          <input id="buscaAdmin" type="search" placeholder="Buscar N°, mesa, cliente o vendedor…" aria-label="Buscar pedido">
+          <button class="btn btn-borde btn-chico" id="btnOrden" title="Cambiar orden">↑ Más antiguo primero</button>
+          <button class="btn btn-oro btn-chico" type="button" id="btnProductosAdm" title="Marcar productos como disponibles o agotados">🍩 Productos</button>
+          <button class="btn btn-navy btn-chico btn-actualizar" type="button" data-actualizar="todos" title="Volver a leer todos los pedidos de la planilla">↻ <span>Actualizar pedidos</span></button>
+          <button class="btn btn-borde btn-chico btn-actualizar" type="button" data-actualizar="productos" title="Volver a leer los productos de la planilla">↻ <span>Actualizar productos</span></button>
+        </div>
+      </div>
+      <div class="filtros" id="filtrosAdmin">
+        <button class="chip activo" data-f="todos">Todos <b class="n"></b></button>
+        <button class="chip" data-f="activos">Pendientes <b class="n"></b></button>
+        <button class="chip" data-f="Creado">Creados <b class="n"></b></button>
+        <button class="chip" data-f="En preparación">En preparación <b class="n"></b></button>
+        <button class="chip" data-f="Entregado">Entregados <b class="n"></b></button>
+        <button class="chip" data-f="Eliminado">Eliminados <b class="n"></b></button>
+      </div>
+      <div class="aviso-lista" id="avisoAdmin" hidden></div>
+      <div class="resumen-admin" id="resumenAdmin"></div>
+      <div id="listaAdmin" class="lista-pedidos lista-admin"><div class="vacio">Cargando pedidos…</div></div>
+      <p class="actualizado" id="lblActualizado"></p>
+    </main>
+  </div>
+
+  <!-- ============ MODAL GENÉRICO ============ -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal-fondo" data-cerrar></div>
+    <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
+      <header class="modal-cabeza">
+        <h3 id="modalTitulo"></h3>
+        <button class="btn-x" data-cerrar aria-label="Cerrar">×</button>
+      </header>
+      <div class="modal-cuerpo" id="modalCuerpo"></div>
+      <footer class="modal-pie" id="modalPie"></footer>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="cargando" class="cargando" hidden><div class="cargando-caja"><div class="spinner"></div><p id="cargandoTxt"></p></div></div>
+
+  <!-- Ticket para impresión por navegador -->
+  <div id="ticketImpresion" aria-hidden="true"></div>
+
+  <script src="assets/config.js"></script>
+  <script src="assets/printer.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
