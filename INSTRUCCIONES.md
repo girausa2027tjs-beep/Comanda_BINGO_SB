@@ -17,6 +17,9 @@ Tiempo aproximado: 30 minutos. Necesitas tu proyecto de Supabase (ya creado) y u
 
 ## Parte A · Base de datos en Supabase
 
+> **¿Ya ejecutaste `1_estructura.sql` antes?** Vuelve a ejecutarlo con esta versión nueva (es seguro:
+> agrega lo nuevo y no borra nada). No hace falta repetir `2_datos.sql`.
+
 **1. Crear la estructura**
 1. Entra a supabase.com y abre tu proyecto.
 2. Menú izquierdo → **SQL Editor** → **New query**.
@@ -44,12 +47,23 @@ Tiempo aproximado: 30 minutos. Necesitas tu proyecto de Supabase (ya creado) y u
 ## Parte B · Conectar la página con Supabase
 
 **5. Copiar la dirección y la clave pública**
-En Supabase → ícono de engranaje **Project Settings** → **API** (en algunos paneles dice **Data API** / **API Keys**;
-también aparecen con el botón **Connect** arriba). Copia:
-- **Project URL**: algo como `https://abcdefghijkl.supabase.co`
-- **Clave pública**: se llama **anon public** o **Publishable key** (`sb_publishable_…`).
 
-⚠️ Nunca uses la clave **service_role** ni **secret**: esa da acceso total a todo.
+*La dirección (Project URL)* — la forma más segura:
+1. Con tu proyecto abierto, mira la barra de direcciones del navegador:
+   `https://supabase.com/dashboard/project/abcdefghijkl/...`
+2. Las letras después de `project/` son el identificador del proyecto (`abcdefghijkl`).
+3. Tu Project URL es: `https://abcdefghijkl.supabase.co` (identificador + `.supabase.co`).
+   También aparece en **Project Settings → General** como "Project ID".
+
+*La clave pública:*
+1. Menú izquierdo, abajo: ícono de engranaje **Project Settings**.
+2. Sección **API Keys**.
+3. En la pestaña principal copia la **Publishable key** (empieza con `sb_publishable_`).
+   Si no aparece, en la pestaña **Legacy API Keys** copia la clave **anon public** (empieza con `eyJ`).
+
+Atajo: el botón **Connect** (arriba, en la página del proyecto) muestra juntas la URL y la clave pública.
+
+⚠️ Nunca uses la **Secret key** ni la **service_role**: esas dan acceso total a todo.
 
 **6. Pegarlas en `assets/config.js`** (ábrelo con el Bloc de notas):
 ```js
@@ -109,6 +123,25 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
   **Restore** y espera 1–2 minutos. No se pierden datos.
 - Revisa productos agotados y estaciones en **🍩 Productos**.
 
+## Productos: agregar, editar y agotar (Administrador → 🍩 Productos)
+- **＋ Nuevo producto:** nombre, precio, estación, disponible y foto.
+  - **📷 Subir foto:** desde el celular (puede ser con la cámara) o el computador. La app la achica sola
+    (una foto de celular de 1,5 MB queda en ~15–40 KB). Cada equipo la descarga una sola vez.
+  - **🔗 Enlace de Drive:** pega el enlace de "Compartir" del archivo (con acceso "Cualquier persona con el
+    enlace"); la app lo convierte solo.
+- **Editar:** toca el nombre de un producto (✏️) para cambiar nombre, precio, estación o foto.
+  Los pedidos ya hechos conservan el precio con que se vendieron.
+- **Agotado / Disponible:** interruptor de cada producto. No se borran productos: se marcan agotados.
+
+## Usuarios: bloquear y desbloquear (Administrador → 👥 Usuarios)
+- Lista de alumnos por curso, con buscador y filtro **Bloqueados**.
+- **Bloquear** a un alumno: no puede entrar (ni como Alumno, Mamá o Papá) y, si está conectado, la app lo
+  saca en unos segundos con el aviso "Tu usuario fue bloqueado". Sus pedidos ya hechos no cambian.
+- **Desbloquear:** vuelve a poder entrar de inmediato.
+- Si alguien se equivocó 8 veces de contraseña aparece "⚠️ trabado por intentos: liberar"; tócalo para que
+  pueda volver a intentar sin esperar.
+- Un administrador no puede bloquearse a sí mismo.
+
 ## Durante el evento
 - Los pedidos y cambios aparecen solos en todas las pantallas (cada 4 s con movimiento, hasta 20 s si está quieto).
 - Si un producto se acaba: **🍩 Productos** → interruptor en **Agotado**. Desaparece de todos los vendedores en segundos.
@@ -133,7 +166,8 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
 - La contraseña nunca se envía de vuelta al navegador.
 
 ## Editar datos a mano (Supabase → Table Editor)
-- `producto`: nombre, precio, foto (enlace de Drive), activo, grupo (= estación). Los cambios llegan solos a la app.
-- `usuario`: alumnos. `administrador`: quiénes entran como Administrador.
+- `producto`: nombre, precio, foto, activo, grupo (= estación). Mejor desde la app (🍩 Productos).
+  Las fotos subidas desde la app están en `producto_imagen`.
+- `usuario`: alumnos (columna `bloqueado`; mejor desde la app, 👥 Usuarios). `administrador`: quiénes entran como Administrador.
 - `pedido`, `detalle_pedido`, `pedido_estado`: historial. Para exportar: **Export → CSV**.
 - No edites a mano `numero_pedido` ni borres filas de pedidos: usa la app (eliminar = estado "Eliminado").

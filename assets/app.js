@@ -33,6 +33,87 @@
   function miniatura(url, ancho) {
     return String(url || '').replace(/([?&]sz=)w\d+/, '$1w' + (ancho || 360));
   }
+  /*
+   * Fotos de productos:
+   *  - enlace https (Google Drive, etc.) → se usa en tamaño chico;
+   *  - "db:<versión>" → foto subida desde la app, guardada en la base. Se pide
+   *    una sola vez por lote y queda guardada en el navegador (no gasta
+   *    transferencia cada vez que se abre la pantalla).
+   */
+  var Fotos = (function () {
+    var mem = {}, pendientes = {}, timer = null, oyentes = [];
+    function clave(id) { return 'comandas_foto_' + id; }
+    function leer(id) {
+      if (mem[id]) return mem[id];
+      try { var v = JSON.parse(localStorage.getItem(clave(id)) || 'null'); if (v) mem[id] = v; return v; } catch (e) { return null; }
+    }
+    function guardar(id, foto, datos) {
+      mem[id] = { foto: foto, datos: datos };
+      try { localStorage.setItem(clave(id), JSON.stringify(mem[id])); } catch (e) { /* sin espacio: queda en memoria */ }
+    }
+    function pedir() {
+      timer = null;
+      var ids = Object.keys(pendientes).slice(0, 60);
+      ids.forEach(function (i) { delete pendientes[i]; });
+      if (!ids.length || !S.token) return;
+      api('imagenes', { ids: ids.map(Number) }, { silencioso: true }).then(function (r) {
+        r.imagenes.forEach(function (im) { guardar(im.id, im.foto, im.datos); });
+        oyentes.forEach(function (f) { try { f(); } catch (e) {} });
+      }).catch(function () {});
+    }
+    return {
+      url: function (p, ancho) {
+        var f = String((p && p.foto) || '');
+        if (!f) return '';
+        if (f.indexOf('db:') !== 0) return miniatura(f, ancho);
+        var c = leer(p.id);
+        if (c && c.foto === f) return c.datos;
+        if (!pendientes[p.id]) { pendientes[p.id] = 1; if (!timer) timer = setTimeout(pedir, 60); }
+        return '';
+      },
+      guardar: guardar,
+      alLlegar: function (f) { oyentes.push(f); }
+    };
+  })();
+  function estiloFoto(p, ancho) {
+    var u = Fotos.url(p, ancho);
+    return u ? ' style="background-image:url(\'' + esc(u).replace(/'/g, '%27') + '\')"' : '';
+  }
+
+  // Enlace de Google Drive (compartir) → enlace directo de imagen.
+  function enlaceDrive(url) {
+    url = String(url || '').trim();
+    var m = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=|thumbnail\?id=)([\w-]{20,})/);
+    return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1000' : url;
+  }
+
+  // Achica una foto en el navegador (máx. 480 px, JPEG) para que pese ~20–40 KB.
+  function achicarFoto(archivo) {
+    return new Promise(function (ok, mal) {
+      if (!archivo || !/^image\//.test(archivo.type)) return mal(new Error('Elige un archivo de imagen.'));
+      var lector = new FileReader();
+      lector.onerror = function () { mal(new Error('No se pudo leer la imagen.')); };
+      lector.onload = function () {
+        var img = new Image();
+        img.onerror = function () { mal(new Error('No se pudo abrir la imagen.')); };
+        img.onload = function () {
+          var max = 480, w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, max / Math.max(w, h));
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+          var ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          var q = 0.8, datos = c.toDataURL('image/jpeg', q);
+          while (datos.length > 150000 && q > 0.35) { q -= 0.1; datos = c.toDataURL('image/jpeg', q); }
+          if (datos.length > 190000) return mal(new Error('La foto es demasiado grande.'));
+          ok(datos);
+        };
+        img.src = lector.result;
+      };
+      lector.readAsDataURL(archivo);
+    });
+  }
+
   function plata(n) { return '$' + Math.round(Number(n) || 0).toLocaleString('es-CL'); }
   function norm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
   function uuid() {
@@ -326,7 +407,7 @@
     if (!lista.length) { g.innerHTML = '<div class="vacio">No hay productos que coincidan.</div>'; return; }
     g.innerHTML = lista.map(function (p) {
       var c = S.carrito[p.id] || 0;
-      var foto = p.foto ? ' style="background-image:url(\'' + esc(miniatura(p.foto)).replace(/'/g, '%27') + '\')"' : '';
+      var foto = estiloFoto(p);
       return '<article class="prod' + (c ? ' elegido' : '') + '" data-id="' + p.id + '">' +
         '<div class="prod-foto"' + foto + '>' + (c ? '<span class="cant-badge">' + c + '</span>' : '') + '</div>' +
         '<div class="prod-info"><div class="prod-nombre">' + esc(p.nombre) + '</div>' +
@@ -1014,6 +1095,11 @@
     mc.onchange = null;
   }
 
+  Fotos.alLlegar(function () {
+    if (S.usuario && S.usuario.perfil !== 'admin') renderProductos();
+    if (S.repintarPanel) S.repintarPanel();
+  });
+
   /* ================= Productos (Administrador) ================= */
   /*
    * Lista de TODOS los productos con un interruptor Disponible / Agotado.
@@ -1024,16 +1110,96 @@
 
   function abrirProductosAdmin() {
     var lista = [], q = '', ver = 'todos';
-    abrirModal('Productos', '<div class="uso-base" id="usoBase">Revisando espacio usado…</div>' +
-      '<div class="barra-acciones"><input id="buscaProdAdm" type="search" placeholder="Buscar producto…" aria-label="Buscar producto"></div>' +
+    abrirModal('Productos', '<div id="vistaListaProd"><div class="uso-base" id="usoBase">Revisando espacio usado…</div>' +
+      '<div class="barra-acciones"><input id="buscaProdAdm" type="search" placeholder="Buscar producto…" aria-label="Buscar producto">' +
+      '<button class="btn btn-rojo btn-chico" type="button" id="btnNuevoProd">＋ Nuevo producto</button></div>' +
       '<div class="filtros" id="filtrosProdAdm">' +
         '<button class="chip activo" data-v="todos">Todos <b class="n"></b></button>' +
         '<button class="chip" data-v="si">Disponibles <b class="n"></b></button>' +
         '<button class="chip" data-v="no">Agotados <b class="n"></b></button></div>' +
       '<ul class="lista-prod-adm" id="listaProdAdm"><li class="vacio">Cargando productos…</li></ul>' +
-      '<p class="nota">La <b>estación</b> ordena los productos en la comanda impresa (línea de armado). Los cambios llegan solos a todos los equipos en unos segundos. Precio, nombre y foto se editan en Supabase → Table Editor → producto.</p>',
+      '<p class="nota">Toca el nombre de un producto para cambiar su nombre, precio o foto. La <b>estación</b> ordena los productos en la comanda impresa (línea de armado). Los cambios llegan solos a todos los equipos en unos segundos.</p></div>' +
+      '<div id="vistaFormProd" hidden></div>',
       '<button class="btn btn-navy" data-cerrar>Listo</button>', true);
     S.modalNoBloquea = true;
+    S.repintarPanel = function () { if ($('#listaProdAdm')) pintar(); if (form && form.repintarFoto) form.repintarFoto(); };
+    var form = null;     // producto que se está creando o editando
+
+    function recargarLista() {
+      return api('productosTodos', {}, { silencioso: true }).then(function (r) { lista = r.productos; pintar(); });
+    }
+
+    function abrirForm(p) {
+      var nuevo = !p;
+      form = { id: nuevo ? null : p.id, nombre: nuevo ? '' : p.nombre, precio: nuevo ? '' : String(p.precio),
+               grupo: nuevo ? null : p.grupo, activo: nuevo ? true : p.activo, foto: nuevo ? '' : (p.foto || ''),
+               datos: null, url: null, guardando: false };
+      $('#vistaListaProd').hidden = true;
+      var v = $('#vistaFormProd'); v.hidden = false;
+      var max = Math.max(6, lista.reduce(function (m, x) { return Math.max(m, Number(x.grupo) || 0); }, 0));
+      var nombres = CFG.ESTACIONES || {}, ops = '<option value="">Sin estación</option>';
+      for (var g = 1; g <= max; g++) ops += '<option value="' + g + '"' + (Number(form.grupo) === g ? ' selected' : '') + '>Estación ' + g + (nombres[g] ? ' · ' + esc(nombres[g]) : '') + '</option>';
+      v.innerHTML = '<h4 class="form-prod-titulo">' + (nuevo ? 'Nuevo producto' : 'Editar producto') + '</h4>' +
+        '<div class="form-prod tarjeta">' +
+          '<div class="foto-prev" id="fotoPrev"><span>Sin foto</span></div>' +
+          '<div class="foto-acciones">' +
+            '<label class="btn btn-azul btn-chico">📷 Subir foto<input type="file" id="fotoArchivo" accept="image/*" hidden></label>' +
+            '<button class="btn btn-borde btn-chico" type="button" id="btnFotoEnlace">🔗 Enlace de Drive</button>' +
+          '</div>' +
+          '<label class="campo" id="campoEnlace" hidden><span>Enlace de la foto <small>(Google Drive: Compartir → "Cualquier persona con el enlace")</small></span>' +
+            '<input id="fotoUrl" placeholder="https://drive.google.com/file/d/…"></label>' +
+          '<label class="campo"><span>Nombre *</span><input id="prodNombre" maxlength="40" value="' + esc(form.nombre) + '" placeholder="Ej: Empanada"></label>' +
+          '<div class="form-prod-fila">' +
+            '<label class="campo"><span>Precio *</span><input id="prodPrecio" inputmode="numeric" maxlength="9" value="' + esc(form.precio) + '" placeholder="Ej: 1500"></label>' +
+            '<label class="campo"><span>Estación</span><select id="prodGrupo">' + ops + '</select></label>' +
+          '</div>' +
+          '<label class="check-linea"><input type="checkbox" id="prodActivo"' + (form.activo ? ' checked' : '') + '> Disponible para vender</label>' +
+          '<p class="error" id="errProd"></p>' +
+          '<div class="acciones"><button class="btn btn-borde" type="button" id="btnVolverProd">Volver</button>' +
+          '<button class="btn btn-rojo" type="button" id="btnGuardarProd">' + (nuevo ? 'Crear producto' : 'Guardar cambios') + '</button></div>' +
+        '</div>';
+      form.repintarFoto = function () {
+        var u = form.datos || (form.url ? miniatura(form.url, 480) : Fotos.url({ id: form.id, foto: form.foto }, 480));
+        var pv = $('#fotoPrev'); if (!pv) return;
+        pv.style.backgroundImage = u ? 'url("' + u.replace(/"/g, '%22') + '")' : '';
+        pv.classList.toggle('con-foto', !!u);
+      };
+      form.repintarFoto();
+      $('#prodNombre').focus();
+    }
+
+    function cerrarForm() {
+      form = null;
+      $('#vistaFormProd').hidden = true; $('#vistaFormProd').innerHTML = '';
+      $('#vistaListaProd').hidden = false;
+    }
+
+    function guardarForm() {
+      if (!form || form.guardando) return;
+      var err = $('#errProd'); err.textContent = '';
+      var nombre = $('#prodNombre').value.trim(), precio = $('#prodPrecio').value.replace(/[$.\s]/g, '');
+      if (nombre.length < 2) { err.textContent = 'Escribe el nombre del producto.'; return $('#prodNombre').focus(); }
+      if (!/^\d{1,7}$/.test(precio) || Number(precio) < 1) { err.textContent = 'Escribe un precio válido (número entero, por ejemplo 1500).'; return $('#prodPrecio').focus(); }
+      var datos = { nombre: nombre, precio: Number(precio), grupo: $('#prodGrupo').value === '' ? null : Number($('#prodGrupo').value),
+                    activo: $('#prodActivo').checked };
+      if (form.id) datos.id = form.id;
+      if (form.datos) datos.foto = { datos: form.datos };
+      else if (form.url) datos.foto = { url: form.url };
+      var nuevo = !form.id, subida = form.datos;
+      form.guardando = true;
+      var b = $('#btnGuardarProd'); b.disabled = true; b.textContent = 'Guardando…';
+      api('productoGuardar', datos, { silencioso: true }).then(function (r) {
+        if (subida) Fotos.guardar(r.id, r.foto, subida);       // ya la tenemos: no se vuelve a descargar
+        toast((nuevo ? 'Producto creado: ' : 'Producto actualizado: ') + r.nombre + ' ✔', 'ok');
+        cerrarForm();
+        recargarLista().catch(function () {});
+        cargarProductos(false).catch(function () {});
+      }).catch(function (e) {
+        if (!form) return;
+        form.guardando = false; b.disabled = false; b.textContent = nuevo ? 'Crear producto' : 'Guardar cambios';
+        err.textContent = e.message;
+      });
+    }
 
     // Selector de estación (grupo): ordena los productos en la comanda impresa.
     function selEstacion(p) {
@@ -1061,8 +1227,8 @@
       });
       $('#listaProdAdm').innerHTML = vis.length ? vis.map(function (p) {
         return '<li class="prod-fila' + (p.activo ? '' : ' agotado') + (p.guardando ? ' guardando-fila' : '') + '" data-id="' + p.id + '">' +
-          '<span class="prod-mini"' + (p.foto ? ' style="background-image:url(\'' + esc(miniatura(p.foto, 120)).replace(/'/g, '%27') + '\')"' : '') + '></span>' +
-          '<span class="prod-dato"><b>' + esc(p.nombre) + '</b><small>' + plata(p.precio) + (p.guardando ? ' · guardando…' : '') + '</small></span>' +
+          '<span class="prod-mini"' + estiloFoto(p, 120) + '></span>' +
+          '<button type="button" class="prod-dato" data-editar="' + p.id + '" title="Editar nombre, precio o foto"><b>' + esc(p.nombre) + ' <i class="lapiz">✏️</i></b><small>' + plata(p.precio) + (p.guardando ? ' · guardando…' : '') + '</small></button>' +
           selEstacion(p) +
           '<label class="interruptor" title="' + (p.activo ? 'Marcar como agotado' : 'Marcar como disponible') + '">' +
             '<input type="checkbox" data-prod="' + p.id + '"' + (p.activo ? ' checked' : '') + (p.guardando ? ' disabled' : '') + '>' +
@@ -1070,7 +1236,7 @@
       }).join('') : '<li class="vacio">No hay productos en esta vista.</li>';
     }
 
-    api('productosTodos', {}, { silencioso: true }).then(function (r) { lista = r.productos; pintar(); })
+    recargarLista()
       .catch(function (e) { $('#listaProdAdm').innerHTML = '<li class="vacio">No se pudieron cargar: ' + esc(e.message) + '</li>'; });
     api('uso', {}, { silencioso: true }).then(function (r) {
       if (r.bytes == null) { $('#usoBase').hidden = true; return; }
@@ -1083,9 +1249,32 @@
     var mc = $('#modalCuerpo');
     mc.oninput = function (ev) { if (ev.target.id === 'buscaProdAdm') { q = ev.target.value; pintar(); } };
     mc.onclick = function (ev) {
-      var c = ev.target.closest('#filtrosProdAdm .chip'); if (c) { ver = c.dataset.v; pintar(); }
+      var c = ev.target.closest('#filtrosProdAdm .chip'); if (c) { ver = c.dataset.v; pintar(); return; }
+      if (ev.target.closest('#btnNuevoProd')) return abrirForm(null);
+      var ed = ev.target.closest('[data-editar]');
+      if (ed) { var pe = lista.filter(function (x) { return x.id === Number(ed.dataset.editar); })[0]; if (pe) abrirForm(pe); return; }
+      if (ev.target.closest('#btnVolverProd')) return cerrarForm();
+      if (ev.target.closest('#btnGuardarProd')) return guardarForm();
+      if (ev.target.closest('#btnFotoEnlace')) { $('#campoEnlace').hidden = false; $('#fotoUrl').focus(); }
     };
     mc.onchange = function (ev) {
+      if (ev.target.id === 'fotoArchivo' && form) {
+        var arch = ev.target.files && ev.target.files[0]; if (!arch) return;
+        $('#errProd').textContent = 'Preparando foto…';
+        achicarFoto(arch).then(function (d) {
+          if (!form) return;
+          form.datos = d; form.url = null; $('#errProd').textContent = '';
+          form.repintarFoto();
+        }).catch(function (e) { $('#errProd').textContent = e.message; });
+        return;
+      }
+      if (ev.target.id === 'fotoUrl' && form) {
+        var u = enlaceDrive(ev.target.value);
+        if (u && !/^https:\/\//.test(u)) { $('#errProd').textContent = 'El enlace debe empezar con https://'; return; }
+        form.url = u || null; form.datos = null; ev.target.value = u; $('#errProd').textContent = '';
+        form.repintarFoto();
+        return;
+      }
       var sel = ev.target.closest('select[data-grupo-prod]');
       if (sel) {
         var pid = Number(sel.dataset.grupoProd), nuevo = sel.value === '' ? null : Number(sel.value);
@@ -1114,6 +1303,84 @@
         p.activo = antes; p.guardando = false; pintar();
         toast('No se pudo cambiar "' + p.nombre + '": ' + e.message, 'mal');
       });
+    };
+  }
+
+  /* ================= Usuarios (Administrador) ================= */
+  /*
+   * Bloquear un alumno impide que entre (como Alumno, Mamá o Papá) y cierra al
+   * instante las sesiones que tenga abiertas. Sus pedidos ya hechos no cambian.
+   */
+  $('#btnUsuariosAdm').addEventListener('click', abrirUsuariosAdmin);
+
+  function abrirUsuariosAdmin() {
+    var lista = [], q = '', ver = 'todos';
+    abrirModal('Usuarios', '<div class="barra-acciones"><input id="buscaUsr" type="search" placeholder="Buscar alumno…" aria-label="Buscar alumno"></div>' +
+      '<div class="filtros" id="filtrosUsr"></div>' +
+      '<ul class="lista-prod-adm" id="listaUsr"><li class="vacio">Cargando usuarios…</li></ul>' +
+      '<p class="nota">Un alumno bloqueado no puede entrar a la app (ni como Alumno, Mamá o Papá) y, si estaba conectado, sale en unos segundos. Sus pedidos ya hechos no cambian.</p>',
+      '<button class="btn btn-navy" data-cerrar>Listo</button>', true);
+    S.modalNoBloquea = true;
+
+    function pintar() {
+      var cursos = [];
+      lista.forEach(function (u) { if (cursos.indexOf(u.curso) < 0) cursos.push(u.curso); });
+      var nBloq = lista.filter(function (u) { return u.bloqueado; }).length;
+      var chips = [['todos', 'Todos', lista.length]].concat(cursos.map(function (c) {
+        return [c, c, lista.filter(function (u) { return u.curso === c; }).length];
+      })).concat([['bloq', 'Bloqueados', nBloq]]);
+      $('#filtrosUsr').innerHTML = chips.map(function (c) {
+        return '<button class="chip' + (ver === c[0] ? ' activo' : '') + '" data-v="' + esc(c[0]) + '">' + esc(c[1]) + ' <b class="n">(' + c[2] + ')</b></button>';
+      }).join('');
+      var qn = norm(q);
+      var vis = lista.filter(function (u) {
+        if (ver === 'bloq' && !u.bloqueado) return false;
+        if (ver !== 'todos' && ver !== 'bloq' && u.curso !== ver) return false;
+        return !qn || norm(u.nombre).indexOf(qn) >= 0;
+      });
+      $('#listaUsr').innerHTML = vis.length ? vis.map(function (u) {
+        var yo = S.usuario && u.id === S.usuario.id;
+        return '<li class="prod-fila usr-fila' + (u.bloqueado ? ' agotado' : '') + (u.guardando ? ' guardando-fila' : '') + '">' +
+          '<span class="usr-ini">' + esc(u.nombre.split(' ').map(function (x) { return x[0]; }).join('').slice(0, 2)) + '</span>' +
+          '<span class="prod-dato"><b>' + esc(u.nombre) + (yo ? ' (tú)' : '') + '</b><small>' + esc(u.curso) + ' · ' + u.pedidos + (u.pedidos === 1 ? ' pedido' : ' pedidos') +
+            (u.admin ? ' · <span class="etq-admin">Admin</span>' : '') +
+            (u.frenado && !u.bloqueado ? ' · <button type="button" class="link-liberar" data-liberar="' + u.id + '">⚠️ trabado por intentos: liberar</button>' : '') + '</small></span>' +
+          '<label class="interruptor" title="' + (yo ? 'No puedes bloquearte a ti mismo' : (u.bloqueado ? 'Desbloquear' : 'Bloquear')) + '">' +
+            '<input type="checkbox" data-usr="' + u.id + '"' + (u.bloqueado ? '' : ' checked') + (yo || u.guardando ? ' disabled' : '') + '>' +
+            '<span class="pista"></span><span class="txt">' + (u.bloqueado ? 'Bloqueado' : 'Habilitado') + '</span></label></li>';
+      }).join('') : '<li class="vacio">No hay usuarios en esta vista.</li>';
+    }
+
+    function cambiar(u, bloquear) {
+      var antes = u.bloqueado;
+      u.bloqueado = bloquear; u.guardando = true; pintar();
+      return api('usuarioBloqueo', { id: u.id, bloqueado: bloquear }, { silencioso: true }).then(function (r) {
+        u.guardando = false; u.frenado = false; pintar();
+        toast(r.nombre + (bloquear ? ': BLOQUEADO' : ': habilitado ✔'), bloquear ? '' : 'ok');
+      }).catch(function (e) {
+        u.bloqueado = antes; u.guardando = false; pintar();
+        toast('No se pudo cambiar a ' + u.nombre + ': ' + e.message, 'mal');
+      });
+    }
+
+    api('usuariosTodos', {}, { silencioso: true }).then(function (r) { lista = r.usuarios; pintar(); })
+      .catch(function (e) { $('#listaUsr').innerHTML = '<li class="vacio">No se pudieron cargar: ' + esc(e.message) + '</li>'; });
+
+    var mc = $('#modalCuerpo');
+    mc.oninput = function (ev) { if (ev.target.id === 'buscaUsr') { q = ev.target.value; pintar(); } };
+    mc.onclick = function (ev) {
+      var c = ev.target.closest('#filtrosUsr .chip'); if (c) { ver = c.dataset.v; pintar(); return; }
+      var lb = ev.target.closest('[data-liberar]');
+      if (lb) { var ul = lista.filter(function (x) { return x.id === Number(lb.dataset.liberar); })[0]; if (ul) cambiar(ul, false); }
+    };
+    mc.onchange = function (ev) {
+      var inp = ev.target.closest('input[data-usr]'); if (!inp) return;
+      var u = lista.filter(function (x) { return x.id === Number(inp.dataset.usr); })[0]; if (!u) return;
+      var bloquear = !inp.checked;
+      if (bloquear && !confirm('¿Bloquear a ' + u.nombre + '?\nNo podrá entrar (ni como Alumno, Mamá o Papá) y se cerrará su sesión si está conectado.')) {
+        inp.checked = true; return;
+      }
+      cambiar(u, bloquear);
     };
   }
 
@@ -1179,6 +1446,7 @@
   function cerrarModal() {
     $('#modal').hidden = true;
     S.modalNoBloquea = false;
+    S.repintarPanel = null;
     var mc = $('#modalCuerpo'); mc.onclick = null; mc.onchange = null; mc.oninput = null; mc.innerHTML = '';
   }
   $('#modal').addEventListener('click', function (ev) { if (ev.target.closest('[data-cerrar]')) cerrarModal(); });

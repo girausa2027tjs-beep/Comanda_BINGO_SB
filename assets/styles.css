@@ -239,6 +239,27 @@ img { max-width: 100%; }
 .interruptor .txt { font-size: .8rem; font-weight: 900; color: var(--rojo-osc); min-width: 68px; }
 .interruptor input:checked ~ .txt { color: var(--verde); }
 @media (max-width: 560px) { .interruptor .txt { display: none; } }
+/* ---------- Productos: formulario ---------- */
+#vistaListaProd .barra-acciones .btn { flex: none; }
+button.prod-dato { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+button.prod-dato:hover b { text-decoration: underline; }
+.prod-dato .lapiz { font-style: normal; font-size: .75em; opacity: .55; }
+.form-prod-titulo { font-family: var(--fuente-titulo); font-weight: 400; color: var(--navy); font-size: 1.2rem; margin: 0 0 .6rem; }
+.form-prod { display: flex; flex-direction: column; gap: .2rem; }
+.foto-prev { width: 140px; height: 140px; border-radius: 14px; background: var(--crema-2) center / cover no-repeat; display: grid; place-items: center; color: var(--gris); font-weight: 800; font-size: .85rem; border: 2px dashed var(--linea); align-self: center; }
+.foto-prev.con-foto { border-style: solid; }
+.foto-prev.con-foto span { display: none; }
+.foto-acciones { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; margin: .5rem 0 .7rem; }
+.foto-acciones label.btn { cursor: pointer; }
+.form-prod-fila { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+.check-linea { display: flex; align-items: center; gap: .5rem; font-weight: 800; color: var(--navy); margin: .1rem 0 .4rem; }
+.check-linea input { width: 20px; height: 20px; accent-color: var(--verde); }
+/* ---------- Usuarios ---------- */
+.usr-fila { grid-template-columns: 46px 1fr auto; }
+.usr-ini { width: 46px; height: 46px; border-radius: 50%; background: var(--azul-claro); color: var(--navy); font-weight: 900; display: grid; place-items: center; text-transform: uppercase; }
+.usr-fila.agotado .usr-ini { background: #fde2e3; color: var(--rojo-osc); }
+.etq-admin { background: var(--oro); color: var(--navy); border-radius: 6px; padding: 0 .35rem; font-weight: 900; }
+.link-liberar { background: none; border: 0; padding: 0; color: var(--rojo-osc); font: inherit; font-weight: 900; text-decoration: underline; cursor: pointer; }
 .vacio .btn { margin-top: .7rem; }
 .vacio { text-align: center; color: var(--gris); font-weight: 800; padding: 2.5rem 1rem; background: rgba(255,255,255,.6); border-radius: var(--radio); border: 2px dashed var(--linea); }
 
