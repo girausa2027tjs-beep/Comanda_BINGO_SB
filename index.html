@@ -72,6 +72,14 @@
           <button class="btn btn-borde btn-chico" id="btnCancelarEdicion" type="button">Cancelar edición</button>
         </div>
         <div class="tarjeta form-venta">
+          <div class="campo campo-talonario">
+            <label for="inpTalonario">N° de talonario <small id="talAyuda">(se mantiene hasta que lo cambies)</small></label>
+            <div class="talonario-fila">
+              <input id="inpTalonario" inputmode="numeric" maxlength="8" placeholder="Ej: 12" autocomplete="off">
+              <button class="btn btn-borde btn-chico" type="button" id="btnTalonario">✔ Fijar</button>
+            </div>
+            <div class="tal-asignados" id="talAsignados" hidden></div>
+          </div>
           <label class="campo campo-mesa">
             <span>N° de mesa *</span>
             <input id="inpMesa" inputmode="numeric" maxlength="10" required placeholder="Ej: 7">
@@ -125,6 +133,7 @@
           <button class="btn btn-borde btn-chico" id="btnOrden" title="Cambiar orden">↑ Más antiguo primero</button>
           <button class="btn btn-oro btn-chico" type="button" id="btnProductosAdm" title="Agregar, editar o marcar productos como agotados">🍩 Productos</button>
           <button class="btn btn-borde btn-chico" type="button" id="btnUsuariosAdm" title="Bloquear o desbloquear usuarios">👥 Usuarios</button>
+          <button class="btn btn-borde btn-chico" type="button" id="btnCajerosAdm" title="Apoderados cajeros móviles y sus talonarios">🧾 Cajeros</button>
           <button class="btn btn-navy btn-chico btn-actualizar" type="button" data-actualizar="todos" title="Volver a leer todos los pedidos de la planilla">↻ <span>Actualizar pedidos</span></button>
           <button class="btn btn-borde btn-chico btn-actualizar" type="button" data-actualizar="productos" title="Volver a leer los productos de la planilla">↻ <span>Actualizar productos</span></button>
         </div>

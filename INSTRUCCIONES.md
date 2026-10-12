@@ -132,6 +132,8 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
 - **Editar:** toca el nombre de un producto (✏️) para cambiar nombre, precio, estación o foto.
   Los pedidos ya hechos conservan el precio con que se vendieron.
 - **Agotado / Disponible:** interruptor de cada producto. No se borran productos: se marcan agotados.
+- **Orden en la pantalla de venta:** por estación de menor a mayor (los sin estación al final) y, dentro de
+  cada estación, por nombre. Cada estación tiene su título ("ESTACIÓN 1", "ESTACIÓN 2"… y "SIN ESTACIÓN"). Al cambiar una estación, la pantalla de los vendedores se reordena sola.
 
 ## Usuarios: bloquear y desbloquear (Administrador → 👥 Usuarios)
 - Lista de alumnos por curso, con buscador y filtro **Bloqueados**.
@@ -142,6 +144,35 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
   pueda volver a intentar sin esperar.
 - Un administrador no puede bloquearse a sí mismo.
 
+## Una sola sesión por persona
+- Cada alumno puede estar conectado **una sola vez como Alumno, una vez como Mamá y una vez como Papá**
+  (los tres a la vez sí, en celulares distintos).
+- Si alguien intenta entrar con el mismo alumno y tipo desde otro celular, la app dice
+  "Ya hay una sesión abierta de … en otro equipo".
+- Se libera:
+  - con **Salir** en el celular donde estaba conectado;
+  - sola, si ese celular lleva **10 minutos** sin usar la app (el antiguo queda fuera con un aviso);
+  - desde **👥 Usuarios**, donde aparece "🟢 Conectado: Mamá · **cerrar sesión**" (por ejemplo, si se le acabó la batería);
+  - en el **mismo celular** se puede volver a entrar siempre (otra pestaña o recargar).
+- El perfil **Administrador** no tiene esta regla: puede estar abierto en el computador de la impresora y en un celular.
+
+## N° de talonario (Vendedor → Nueva venta)
+- Arriba del formulario: se escribe una vez y **Enter** o **✔ Fijar**. Queda fijo (en celeste) para todas las ventas
+  siguientes en ese celular, aunque se recargue la página, hasta que se toque **✏️ Cambiar**.
+- Es opcional para los vendedores normales. Sale en la tarjeta del pedido, en la comanda impresa y el
+  Administrador puede buscar "talonario 12".
+- Varios vendedores pueden usar el mismo N° de talonario.
+
+## Cajeros móviles (Administrador → 🧾 Cajeros)
+- **＋ Nuevo cajero móvil:** escribe parte del nombre o del apellido del alumno (o toca ▾ para ver la lista),
+  elige **Mamá** o **Papá** y agrega uno o varios talonarios (`12`, `12, 15` o un rango `20-25`) → **Crear cajero**.
+- Tocar un cajero permite agregar o quitar talonarios (×) o **Quitar cajero**.
+  Los pedidos ya hechos conservan su talonario.
+- El cajero entra a la app como Vendedor (curso, alumno, "Mamá" o "Papá" y la contraseña de siempre).
+  Ve "CAJERO MÓVIL" arriba y sus talonarios como botones; **debe** vender con uno de los suyos.
+- Un talonario se asigna a **un solo cajero móvil** (la app avisa si ya es de otro). Solo pueden ser cajeros la Mamá o el Papá.
+- La lista muestra cuántos pedidos y cuánto vendió cada cajero.
+
 ## Durante el evento
 - Los pedidos y cambios aparecen solos en todas las pantallas (cada 4 s con movimiento, hasta 20 s si está quieto).
 - Si un producto se acaba: **🍩 Productos** → interruptor en **Agotado**. Desaparece de todos los vendedores en segundos.
@@ -150,8 +181,8 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
 ## Reglas de la app
 | Quién | Puede |
 |---|---|
-| Vendedor | Crear pedidos (mesa y cliente obligatorios, comentario opcional, Efectivo/Transferencia); editar solo en **Creado**; **En preparación → Entregado**; **Eliminar** solo en Creado o En preparación. Ve solo sus pedidos (el Alumno, su Mamá y su Papá tienen listas separadas). |
-| Administrador | Ve todos los pedidos con quién vendió; edita productos/cantidades en Creado o En preparación; **Creado → En preparación** + imprime; reimprime; marca productos agotados y asigna estaciones. |
+| Vendedor | Crear pedidos (mesa y cliente obligatorios, N° de talonario y comentario opcionales —el talonario es obligatorio para cajeros móviles—, Efectivo/Transferencia); editar solo en **Creado**; **En preparación → Entregado**; **Eliminar** solo en Creado o En preparación. Ve solo sus pedidos (el Alumno, su Mamá y su Papá tienen listas separadas). |
+| Administrador | Ve todos los pedidos con quién vendió; edita productos/cantidades en Creado o En preparación; **Creado → En preparación** + imprime; reimprime; marca productos agotados y asigna estaciones; bloquea usuarios y cierra sesiones; crea cajeros móviles y les asigna talonarios. |
 
 ## Plan gratuito de Supabase (500 MB de base, 5 GB de transferencia al mes)
 - Las pantallas descargan solo los pedidos que cambiaron; una revisión sin cambios pesa ~90 bytes.
@@ -169,5 +200,6 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
 - `producto`: nombre, precio, foto, activo, grupo (= estación). Mejor desde la app (🍩 Productos).
   Las fotos subidas desde la app están en `producto_imagen`.
 - `usuario`: alumnos (columna `bloqueado`; mejor desde la app, 👥 Usuarios). `administrador`: quiénes entran como Administrador.
-- `pedido`, `detalle_pedido`, `pedido_estado`: historial. Para exportar: **Export → CSV**.
+- `cajero_movil`, `cajero_talonario`: cajeros móviles y sus talonarios (mejor desde la app, 🧾 Cajeros).
+- `pedido`, `detalle_pedido`, `pedido_estado`: historial (el talonario está en `pedido.nro_talonario`). Para exportar: **Export → CSV**.
 - No edites a mano `numero_pedido` ni borres filas de pedidos: usa la app (eliminar = estado "Eliminado").
