@@ -73,20 +73,20 @@
         </div>
         <div class="tarjeta form-venta">
           <div class="campo campo-talonario">
-            <label for="inpTalonario">N° de talonario <small id="talAyuda">(se mantiene hasta que lo cambies)</small></label>
+            <label for="inpTalonario">N° de talonario * <small id="talAyuda">(se mantiene hasta que lo cambies)</small></label>
             <div class="talonario-fila">
               <input id="inpTalonario" inputmode="numeric" maxlength="8" placeholder="Ej: 12" autocomplete="off">
               <button class="btn btn-borde btn-chico" type="button" id="btnTalonario">✔ Fijar</button>
             </div>
-            <div class="tal-asignados" id="talAsignados" hidden></div>
+            <div class="tal-cajero" id="talCajero" hidden></div>
           </div>
           <label class="campo campo-mesa">
             <span>N° de mesa *</span>
             <input id="inpMesa" inputmode="numeric" maxlength="10" required placeholder="Ej: 7">
           </label>
           <label class="campo campo-cliente">
-            <span>Nombre del cliente *</span>
-            <input id="inpCliente" maxlength="60" required placeholder="Ej: Carolina">
+            <span>Nombre del cliente <small>(opcional)</small></span>
+            <input id="inpCliente" maxlength="60" placeholder="Ej: Carolina">
           </label>
           <label class="campo campo-comentario">
             <span>Comentario <small>(opcional, sale en el ticket)</small></span>

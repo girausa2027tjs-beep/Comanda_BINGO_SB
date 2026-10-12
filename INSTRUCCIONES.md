@@ -156,22 +156,36 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
   - en el **mismo celular** se puede volver a entrar siempre (otra pestaña o recargar).
 - El perfil **Administrador** no tiene esta regla: puede estar abierto en el computador de la impresora y en un celular.
 
-## N° de talonario (Vendedor → Nueva venta)
-- Arriba del formulario: se escribe una vez y **Enter** o **✔ Fijar**. Queda fijo (en celeste) para todas las ventas
-  siguientes en ese celular, aunque se recargue la página, hasta que se toque **✏️ Cambiar**.
-- Es opcional para los vendedores normales. Sale en la tarjeta del pedido, en la comanda impresa y el
-  Administrador puede buscar "talonario 12".
-- Varios vendedores pueden usar el mismo N° de talonario.
+## Cajeros móviles y talonarios
+Un **cajero móvil** es un apoderado (Mamá o Papá de un alumno) que tiene uno o más **talonarios de papel** y está a
+cargo de un grupo de vendedores (alumnos que hacen de garzones). Cada venta se suma al cajero dueño del talonario,
+así sabes cuánto debe entregar cada cajero en **efectivo** y en **transferencia**.
 
-## Cajeros móviles (Administrador → 🧾 Cajeros)
-- **＋ Nuevo cajero móvil:** escribe parte del nombre o del apellido del alumno (o toca ▾ para ver la lista),
-  elige **Mamá** o **Papá** y agrega uno o varios talonarios (`12`, `12, 15` o un rango `20-25`) → **Crear cajero**.
-- Tocar un cajero permite agregar o quitar talonarios (×) o **Quitar cajero**.
-  Los pedidos ya hechos conservan su talonario.
-- El cajero entra a la app como Vendedor (curso, alumno, "Mamá" o "Papá" y la contraseña de siempre).
-  Ve "CAJERO MÓVIL" arriba y sus talonarios como botones; **debe** vender con uno de los suyos.
-- Un talonario se asigna a **un solo cajero móvil** (la app avisa si ya es de otro). Solo pueden ser cajeros la Mamá o el Papá.
-- La lista muestra cuántos pedidos y cuánto vendió cada cajero.
+**Antes del evento (Administrador → 🧾 Cajeros):**
+1. **＋ Nuevo cajero móvil** → escribe parte del nombre o apellido del alumno (o toca ▾ para ver la lista) y elígelo.
+2. Elige **Mamá** o **Papá** (solo ellos pueden ser cajeros).
+3. Escribe sus talonarios: `12`, `12, 15` o un rango `20-25` → **Crear cajero**.
+4. Un talonario es de **un solo cajero** (la app avisa si ya es de otro). Tocando un cajero puedes agregar o quitar
+   talonarios (×) o **Quitar cajero**.
+
+Los cajeros se pueden crear o completar **después**: los garzones pueden vender con un talonario que todavía no
+tiene cajero, y cuando se lo asignes, sus ventas (también las anteriores) se suman a ese cajero.
+
+**Garzón (Vendedor → Nueva venta):**
+- **N° de talonario es obligatorio.** Se escribe una vez y **Enter** o **✔ Fijar**: queda fijo (en celeste) para todas
+  las ventas siguientes en ese celular, aunque se recargue la página, hasta que toque **✏️ Cambiar**.
+- Debajo aparece "👤 Cajero móvil: Mamá de …" para confirmar que es el talonario correcto, o "aún sin cajero
+  asignado" si el Administrador todavía no lo asigna (igual se puede vender).
+- Varios garzones pueden usar el mismo talonario.
+- El **nombre del cliente es opcional** (la mesa sigue siendo obligatoria).
+
+**Recaudación (🧾 Cajeros):** por cada cajero muestra pedidos, **Efectivo**, **Transferencia** y **Total**, y cuánto
+se vendió con cada talonario. Arriba sale la suma de todos. No cuentan los pedidos eliminados.
+Más abajo, **"Talonarios usados sin cajero"** lista los números que ya tienen ventas pero no tienen cajero, con su
+efectivo y transferencia: asígnalos a un cajero y sus ventas pasan a él. Si quitas un talonario a un cajero, sus
+pedidos vuelven a esa lista.
+El talonario y su cajero salen también en las tarjetas de pedidos, en la comanda impresa y en el buscador del
+Administrador ("talonario 12" o el nombre del cajero).
 
 ## Durante el evento
 - Los pedidos y cambios aparecen solos en todas las pantallas (cada 4 s con movimiento, hasta 20 s si está quieto).
@@ -181,8 +195,8 @@ Si después cambias `config.js`: en GitHub abre `assets/config.js` → lápiz �
 ## Reglas de la app
 | Quién | Puede |
 |---|---|
-| Vendedor | Crear pedidos (mesa y cliente obligatorios, N° de talonario y comentario opcionales —el talonario es obligatorio para cajeros móviles—, Efectivo/Transferencia); editar solo en **Creado**; **En preparación → Entregado**; **Eliminar** solo en Creado o En preparación. Ve solo sus pedidos (el Alumno, su Mamá y su Papá tienen listas separadas). |
-| Administrador | Ve todos los pedidos con quién vendió; edita productos/cantidades en Creado o En preparación; **Creado → En preparación** + imprime; reimprime; marca productos agotados y asigna estaciones; bloquea usuarios y cierra sesiones; crea cajeros móviles y les asigna talonarios. |
+| Vendedor (garzón) | Crear pedidos (mesa y N° de talonario obligatorios; cliente y comentario opcionales; Efectivo/Transferencia); editar solo en **Creado**; **En preparación → Entregado**; **Eliminar** solo en Creado o En preparación. Ve solo sus pedidos (el Alumno, su Mamá y su Papá tienen listas separadas). |
+| Administrador | Ve todos los pedidos con quién vendió; edita productos/cantidades en Creado o En preparación; **Creado → En preparación** + imprime; reimprime; marca productos agotados y asigna estaciones; bloquea usuarios y cierra sesiones; crea cajeros móviles, les asigna talonarios y ve cuánto recaudó cada uno. |
 
 ## Plan gratuito de Supabase (500 MB de base, 5 GB de transferencia al mes)
 - Las pantallas descargan solo los pedidos que cambiaron; una revisión sin cambios pesa ~90 bytes.
