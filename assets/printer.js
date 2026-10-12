@@ -234,6 +234,7 @@
     e.ln(p.fecha + '  ' + p.hora);
     e.ln('Vende: ' + p.usuario + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + p.tipoUsuario + ')' : ''));
     e.ln('Pago: ' + p.tipoVenta);
+    if (p.talonario) e.negrita(true).ln('Talonario N. ' + p.talonario).negrita(false);
     e.alin(0).ln('-'.repeat(w));
     porEstacion(p.items).forEach(function (bq, i) {
       if (bq.titulo) {
@@ -288,6 +289,7 @@
       '<div class="c">' + esc(p.fecha) + ' ' + esc(p.hora) + '</div>' +
       '<div class="c">Vende: ' + esc(p.usuario) + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' +
       '<div class="c">Pago: ' + esc(p.tipoVenta) + '</div>' +
+      (p.talonario ? '<div class="c b">Talonario N° ' + esc(p.talonario) + '</div>' : '') +
       '<div class="sep"></div><table>' + filas + '</table><div class="sep"></div>' +
       '<table><tr><td class="tot">TOTAL</td><td class="r tot">' + plata(p.total) + '</td></tr></table>' +
       (opts && opts.reimpresion ? '<div class="c b reimp">*** REIMPRESIÓN ***</div>' : '') +

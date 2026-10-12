@@ -127,6 +127,15 @@
 
   function guardarSesion(v) { try { v ? sessionStorage.setItem('comandas_ses', JSON.stringify(v)) : sessionStorage.removeItem('comandas_ses'); } catch (e) {} }
   function leerSesion() { try { return JSON.parse(sessionStorage.getItem('comandas_ses') || 'null'); } catch (e) { return null; } }
+  // Identificador de este equipo (navegador). Sesión única: desde el mismo equipo
+  // se puede volver a entrar aunque la sesión anterior siga abierta.
+  function equipo() {
+    try {
+      var v = localStorage.getItem('comandas_equipo');
+      if (!v) { v = uuid().replace(/[^A-Za-z0-9_-]/g, ''); localStorage.setItem('comandas_equipo', v); }
+      return v;
+    } catch (e) { return ''; }
+  }
 
   var toastT;
   function toast(msg, tipo) {
@@ -264,7 +273,7 @@
     var tipo = ($('input[name="tipoUsuario"]:checked') || {}).value || '';
     var perfil = $('input[name="perfil"]:checked').value;
     $('#btnIngresar').disabled = true;
-    api('login', { id_usuario: Number(id), clave: clave, tipo_usuario: tipo, perfil: perfil })
+    api('login', { id_usuario: Number(id), clave: clave, tipo_usuario: tipo, perfil: perfil, dispositivo: equipo() })
       .then(function (r) {
         S.token = r.token; S.usuario = r.usuario;
         guardarSesion({ token: r.token, usuario: r.usuario });
@@ -278,7 +287,7 @@
   function salir(msg) {
     if (S.token && !msg) api('logout', {}, { silencioso: true }).catch(function () {});
     clearInterval(S.timer);
-    S.token = null; S.usuario = null; S.carrito = {}; S.edit = null; S.reqId = null;
+    S.token = null; S.usuario = null; S.carrito = {}; S.edit = null; S.reqId = null; S.talonarios = [];
     S.mis = []; S.todos = []; S.cargado = { mis: false, todos: false }; S.enviando = [];
     clearTimeout(S.timer); S.desde = { mis: null, todos: null };
     ['#listaMis', '#listaAdmin'].forEach(function (s) { $(s).innerHTML = '<div class="vacio">Cargando pedidos…</div>'; });
@@ -298,8 +307,10 @@
     $('#vistaApp').hidden = false;
     var u = S.usuario;
     $('#lblUsuario').textContent = u.nombre + ' · ' + u.curso;
-    $('#lblPerfil').textContent = (u.perfil === 'admin' ? 'ADMINISTRADOR' : 'VENDEDOR') + (u.tipo && u.tipo !== 'Alumno' ? ' · ' + u.tipo.toUpperCase() : '');
+    S.talonarios = [];
+    etiquetaPerfil();
     var admin = u.perfil === 'admin';
+    if (!admin) pintarTalonario(false);
     $('#vistaAdmin').hidden = !admin;
     $('#vistaVendedor').hidden = admin;
     $('#btnImpresora').hidden = !admin;
@@ -309,6 +320,12 @@
     S.desde = { mis: null, todos: null };
     S.espera = ESPERA_MIN;
     programar(ESPERA_MIN);
+  }
+
+  function etiquetaPerfil() {
+    var u = S.usuario; if (!u) return;
+    $('#lblPerfil').textContent = (u.perfil === 'admin' ? 'ADMINISTRADOR' : 'VENDEDOR') + (u.tipo && u.tipo !== 'Alumno' ? ' · ' + u.tipo.toUpperCase() : '') +
+      (u.perfil !== 'admin' && S.talonarios.length ? ' · CAJERO MÓVIL' : '');
   }
 
   /*
@@ -411,19 +428,31 @@
     var lista = productosVisibles();
     var g = $('#gridProductos');
     if (!lista.length) { g.innerHTML = '<div class="vacio">No hay productos que coincidan.</div>'; return; }
+    // Encabezado por estación (solo si hay productos con estación): la lista ya viene ordenada.
+    var conEstacion = lista.some(function (p) { return p.grupo != null && p.grupo !== ''; }), ultima;
     g.innerHTML = lista.map(function (p) {
       var c = S.carrito[p.id] || 0;
-      var foto = estiloFoto(p);
-      return '<article class="prod' + (c ? ' elegido' : '') + '" data-id="' + p.id + '">' +
-        '<div class="prod-foto"' + foto + '>' + (c ? '<span class="cant-badge">' + c + '</span>' : '') + '</div>' +
-        '<div class="prod-info"><div class="prod-nombre">' + esc(p.nombre) + '</div>' +
-        '<div class="prod-precio">' + plata(precioDe(p.id)) + '</div>' +
-        (p.activo === false ? '<div class="prod-inactivo">No disponible para nuevos pedidos</div>' : '') + '</div>' +
-        '<div class="stepper"><button type="button" class="menos" aria-label="Quitar uno de ' + esc(p.nombre) + '">−</button>' +
-        '<output>' + c + '</output>' +
-        '<button type="button" class="mas" aria-label="Agregar uno de ' + esc(p.nombre) + '"' + (p.activo === false && !c ? ' disabled' : '') + '>+</button></div>' +
-        '</article>';
+      var grupo = p.grupo == null || p.grupo === '' ? '' : String(p.grupo);
+      var cab = '';
+      if (conEstacion && grupo !== ultima) {
+        ultima = grupo;
+        cab = '<div class="grid-estacion" data-estacion="' + esc(grupo) + '">' + esc(Impresora.nombreEstacion(grupo === '' ? null : grupo)) + '</div>';
+      }
+      return cab + productoHTML(p, c);
     }).join('');
+  }
+
+  function productoHTML(p, c) {
+    var foto = estiloFoto(p);
+    return '<article class="prod' + (c ? ' elegido' : '') + '" data-id="' + p.id + '">' +
+      '<div class="prod-foto"' + foto + '>' + (c ? '<span class="cant-badge">' + c + '</span>' : '') + '</div>' +
+      '<div class="prod-info"><div class="prod-nombre">' + esc(p.nombre) + '</div>' +
+      '<div class="prod-precio">' + plata(precioDe(p.id)) + '</div>' +
+        (p.activo === false ? '<div class="prod-inactivo">No disponible para nuevos pedidos</div>' : '') + '</div>' +
+      '<div class="stepper"><button type="button" class="menos" aria-label="Quitar uno de ' + esc(p.nombre) + '">−</button>' +
+      '<output>' + c + '</output>' +
+      '<button type="button" class="mas" aria-label="Agregar uno de ' + esc(p.nombre) + '"' + (p.activo === false && !c ? ' disabled' : '') + '>+</button></div>' +
+      '</article>';
   }
 
   $('#gridProductos').addEventListener('click', function (ev) {
@@ -434,8 +463,83 @@
   });
   $('#buscaProd').addEventListener('input', renderProductos);
   // Si cambian mesa o cliente, es un envío distinto (nuevo id anti-duplicado).
-  ['#inpMesa', '#inpCliente', '#inpComentario'].forEach(function (s) {
+  ['#inpMesa', '#inpCliente', '#inpComentario', '#inpTalonario'].forEach(function (s) {
     $(s).addEventListener('input', function () { S.reqId = null; this.classList.remove('invalido'); });
+  });
+
+  /*
+   * N° de talonario: el vendedor lo escribe una vez y queda fijo en este equipo
+   * (para este alumno + tipo) hasta que presione "Cambiar". Un cajero móvil
+   * solo puede usar sus talonarios asignados (se muestran como botones).
+   */
+  S.talonarios = [];
+  function claveTal() { return 'comandas_talonario_' + (S.usuario ? S.usuario.id + '_' + norm(S.usuario.tipo) : ''); }
+  function talGuardado() { try { return localStorage.getItem(claveTal()) || ''; } catch (e) { return ''; } }
+  function talGuardar(v) { try { if (v) localStorage.setItem(claveTal(), v); else localStorage.removeItem(claveTal()); } catch (e) {} }
+  function limpiarTal(v) { return String(v == null ? '' : v).replace(/[\s#°ºNn.]/g, ''); }
+
+  // editando: true = dejar el campo abierto; false = mostrar el guardado; undefined = mantener
+  function pintarTalonario(editando) {
+    var inp = $('#inpTalonario'); if (!inp || !S.usuario || S.usuario.perfil === 'admin') return;
+    if (editando === undefined) editando = !inp.readOnly && document.activeElement === inp;
+    var asig = S.talonarios || [];
+    if (!S.edit) {
+      var g = talGuardado();
+      if (asig.length && g && asig.indexOf(Number(g)) < 0) { g = ''; talGuardar(''); }   // ya no es suyo
+      if (!g && asig.length === 1) { g = String(asig[0]); talGuardar(g); }
+      if (!editando) inp.value = g;
+    }
+    var fijo = !editando && !S.edit && !!inp.value;
+    inp.readOnly = fijo;
+    inp.classList.toggle('fijo', fijo);
+    var b = $('#btnTalonario');
+    b.textContent = fijo ? '✏️ Cambiar' : '✔ Fijar';
+    b.hidden = !!S.edit;
+    $('#talAyuda').textContent = S.edit ? '(de este pedido)'
+      : asig.length ? '· Cajero móvil, tus talonarios: ' + asig.join(', ')
+      : '(opcional · se mantiene hasta que lo cambies)';
+    var cont = $('#talAsignados');
+    cont.hidden = fijo || asig.length < 2;
+    cont.innerHTML = asig.length < 2 ? '' : 'Elige: ' + asig.map(function (t) {
+      return '<button type="button" data-tal="' + t + '">N° ' + t + '</button>';
+    }).join('');
+  }
+
+  function fijarTalonario(avisar) {
+    var inp = $('#inpTalonario'), v = limpiarTal(inp.value);
+    if (v && !/^\d{1,6}$/.test(v)) { inp.classList.add('invalido'); toast('El N° de talonario debe ser un número (por ejemplo 12).', 'mal'); return false; }
+    if (v && Number(v) < 1) { inp.classList.add('invalido'); toast('El N° de talonario debe ser mayor que 0.', 'mal'); return false; }
+    if (v && S.talonarios.length && S.talonarios.indexOf(Number(v)) < 0) {
+      inp.classList.add('invalido'); toast('El talonario N° ' + Number(v) + ' no es tuyo. Tus talonarios: ' + S.talonarios.join(', '), 'mal'); return false;
+    }
+    inp.classList.remove('invalido');
+    inp.value = v ? String(Number(v)) : '';
+    if (!S.edit) {
+      var antes = talGuardado();
+      talGuardar(inp.value);
+      pintarTalonario(false);
+      if (avisar && inp.value && inp.value !== antes) toast('Talonario N° ' + inp.value + ' fijado ✔', 'ok');
+    }
+    return true;
+  }
+
+  // mousedown sin quitar el foco: así "Fijar" no se confunde con salir del campo
+  ['#btnTalonario', '#talAsignados'].forEach(function (sel) {
+    $(sel).addEventListener('mousedown', function (ev) { if (ev.target.closest('button')) ev.preventDefault(); });
+  });
+  $('#btnTalonario').addEventListener('click', function () {
+    var inp = $('#inpTalonario');
+    if (inp.readOnly) { pintarTalonario(true); inp.focus(); inp.select(); return; }
+    if (fijarTalonario(true) && inp.value) inp.blur();
+  });
+  $('#talAsignados').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-tal]'); if (!b) return;
+    $('#inpTalonario').value = b.dataset.tal; S.reqId = null;
+    fijarTalonario(true);
+  });
+  $('#inpTalonario').addEventListener('change', function () { if (!this.readOnly) fijarTalonario(true); });
+  $('#inpTalonario').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); if (fijarTalonario(true) && this.value) this.blur(); }
   });
 
   function cambiarCant(id, d) {
@@ -459,6 +563,13 @@
   }
 
   function validarCabecera() {
+    var tal = $('#inpTalonario');
+    if (!tal.readOnly && !fijarTalonario(false)) { tal.focus(); return false; }
+    if (S.talonarios.length && !tal.value) {
+      tal.classList.add('invalido'); tal.focus();
+      toast('Escribe tu N° de talonario (tienes: ' + S.talonarios.join(', ') + ').', 'mal');
+      return false;
+    }
     var mesa = $('#inpMesa'), cli = $('#inpCliente'), ok = true;
     [mesa, cli].forEach(function (i) { i.classList.remove('invalido'); });
     if (!mesa.value.trim()) { mesa.classList.add('invalido'); ok = false; }
@@ -490,8 +601,9 @@
   function abrirResumen() {
     var tv = S.tipoVenta;
     var cuerpo = function () {
-      var com = $('#inpComentario').value.trim();
+      var com = $('#inpComentario').value.trim(), tal = $('#inpTalonario').value.trim();
       return '<div class="detalle-cabeza"><div><div class="pedido-meta">Cliente</div><div class="pedido-cliente">' + esc($('#inpCliente').value.trim()) + '</div>' +
+        (tal ? '<span class="etq-tal">🧾 Talonario N° ' + esc(tal) + '</span>' : '') +
         (com ? '<div class="pedido-coment">📝 ' + esc(com) + '</div>' : '') + '</div>' +
         '<div class="pedido-mesa"><small>MESA</small><b>' + esc($('#inpMesa').value.trim()) + '</b></div></div>' +
         lineasCarritoHTML() +
@@ -527,13 +639,14 @@
 
   function enviarPedido(btn) {
     var items = Object.keys(S.carrito).map(function (id) { return { id: Number(id), cantidad: S.carrito[id] }; });
-    var datos = { mesa: $('#inpMesa').value.trim(), cliente: $('#inpCliente').value.trim(), comentario: $('#inpComentario').value.trim(), tipoVenta: S.tipoVenta, items: items };
+    var datos = { mesa: $('#inpMesa').value.trim(), cliente: $('#inpCliente').value.trim(), comentario: $('#inpComentario').value.trim(),
+                  talonario: limpiarTal($('#inpTalonario').value), tipoVenta: S.tipoVenta, items: items };
     if (!S.edit) return crearEnFondo(datos);
     btn.disabled = true; S.ocupado = true;
     var n = turno('mis');
     var p, clave = null;
     if (S.edit) {
-      clave = 'editar:' + S.edit.numero + ':' + S.edit.version + ':' + JSON.stringify([datos.mesa, datos.cliente, datos.tipoVenta, items]);
+      clave = 'editar:' + S.edit.numero + ':' + S.edit.version + ':' + JSON.stringify([datos.mesa, datos.cliente, datos.tipoVenta, datos.talonario, datos.comentario, items]);
       p = api('editar', Object.assign(datos, { numero: S.edit.numero, version: S.edit.version, reqId: reqIdPara(clave), desde: desdePara('mis') }));
     } else {
       if (!S.reqId) S.reqId = uuid();          // se conserva si hay que reintentar
@@ -619,6 +732,7 @@
       (env.estado === 'error' ? '⚠️ Sin guardar' : '<span class="mini-spin"></span> Guardando…') + '</div>' +
       '<div class="pedido-mesa"><small>MESA</small><b>' + esc(env.datos.mesa) + '</b></div></div>' +
       '<div class="pedido-cliente">' + esc(env.datos.cliente) + '</div>' +
+      (env.datos.talonario ? '<span class="etq-tal">🧾 Talonario N° ' + esc(env.datos.talonario) + '</span>' : '') +
       (env.datos.comentario ? '<div class="pedido-coment">📝 ' + esc(env.datos.comentario) + '</div>' : '') +
       '<ul class="pedido-items">' + env.lineas.map(function (i) {
         return '<li><span><b>' + i.cantidad + '×</b> ' + esc(i.nombre) + '</span><span>' + plata(i.subtotal) + '</span></li>';
@@ -658,6 +772,8 @@
     S.carrito = {}; S.edit = null; S.reqId = null; S.tipoVenta = '';
     $('#inpMesa').value = ''; $('#inpCliente').value = ''; $('#inpComentario').value = ''; $('#buscaProd').value = '';
     $('#bannerEdicion').hidden = true;
+    $('#inpTalonario').classList.remove('invalido');
+    pintarTalonario(false);            // vuelve el talonario fijado (no se borra entre ventas)
     renderProductos(); actualizarCarrito();
   }
 
@@ -748,6 +864,10 @@
       // la versión de productos viaja con la lista: así nunca se pierde un cambio ocurrido justo al entrar
       if (r.version != null) { S.version = S.version || {}; S.version.productos = r.version; }
       S.productos = r.productos;
+      if (Array.isArray(r.talonarios)) {
+        S.talonarios = r.talonarios.map(Number);
+        if (S.usuario && S.usuario.perfil !== 'admin') { etiquetaPerfil(); pintarTalonario(); }
+      }
       S.prodMap = {};
       r.productos.forEach(function (p) { S.prodMap[p.id] = p; });
       // Productos que ya no están disponibles salen del pedido en curso (no al editar uno existente).
@@ -854,6 +974,7 @@
       '<div class="pedido-cabeza"><div class="pedido-num"><small>' + esc(p.fecha) + ' · ' + esc(p.hora.slice(0, 5)) + '</small>#' + p.numero + '</div>' +
       '<div class="pedido-mesa"><small>MESA</small><b>' + esc(p.mesa) + '</b></div></div>' +
       '<div class="pedido-cliente">' + esc(p.cliente) + '</div>' +
+      (p.talonario ? '<span class="etq-tal">🧾 Talonario N° ' + esc(p.talonario) + '</span>' : '') +
       (p.comentario ? '<div class="pedido-coment">📝 ' + esc(p.comentario) + '</div>' : '') +
       (modo === 'admin' ? '<div class="pedido-meta">Vende: ' + esc(p.usuario) + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' : '') +
       '<ul class="pedido-items">' + p.items.map(function (i) {
@@ -884,6 +1005,7 @@
     p.items.forEach(function (i) { S.carrito[i.id] = i.cantidad; });
     S.tipoVenta = p.tipoVenta;
     $('#inpMesa').value = p.mesa; $('#inpCliente').value = p.cliente; $('#inpComentario').value = p.comentario || '';
+    $('#inpTalonario').value = p.talonario || ''; pintarTalonario(true);
     $('#lblEditNum').textContent = '#' + p.numero;
     $('#bannerEdicion').hidden = false;
     mostrarTab('venta');
@@ -968,7 +1090,7 @@
     var lista = S.todos.filter(function (p) {
       if (!pasaFiltro(p, S.filtroAdmin)) return false;
       if (!q) return true;
-      return norm(['#' + p.numero, p.numero, 'mesa ' + p.mesa, p.cliente, p.usuario].join(' ')).indexOf(q) >= 0;
+      return norm(['#' + p.numero, p.numero, 'mesa ' + p.mesa, p.cliente, p.usuario, p.talonario ? 'talonario ' + p.talonario : ''].join(' ')).indexOf(q) >= 0;
     });
     lista.sort(function (a, b) { return S.ordenAsc ? a.numero - b.numero : b.numero - a.numero; });
     contarChips('#filtrosAdmin', S.todos);
@@ -1016,6 +1138,7 @@
       return '<div class="detalle-cabeza"><div><div class="pedido-meta">' + esc(p.fecha) + ' ' + esc(p.hora) + ' · Vende ' + esc(p.usuario) +
         (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' +
         '<div class="pedido-cliente">' + esc(p.cliente) + '</div>' +
+        (p.talonario ? '<span class="etq-tal">🧾 Talonario N° ' + esc(p.talonario) + '</span>' : '') +
         (p.comentario ? '<div class="pedido-coment">📝 ' + esc(p.comentario) + '</div>' : '') +
         '<div><span class="estado" data-e="' + esc(p.estado) + '">' + esc(p.estado) + '</span> <span class="tipo-venta' + (norm(p.tipoVenta) === 'efectivo' ? ' efectivo' : '') + '">' + esc(p.tipoVenta) + '</span></div>' +
         historialHTML(p) + '</div>' +
@@ -1324,7 +1447,8 @@
     abrirModal('Usuarios', '<div class="barra-acciones"><input id="buscaUsr" type="search" placeholder="Buscar alumno…" aria-label="Buscar alumno"></div>' +
       '<div class="filtros" id="filtrosUsr"></div>' +
       '<ul class="lista-prod-adm" id="listaUsr"><li class="vacio">Cargando usuarios…</li></ul>' +
-      '<p class="nota">Un alumno bloqueado no puede entrar a la app (ni como Alumno, Mamá o Papá) y, si estaba conectado, sale en unos segundos. Sus pedidos ya hechos no cambian.</p>',
+      '<p class="nota">Un alumno bloqueado no puede entrar a la app (ni como Alumno, Mamá o Papá) y, si estaba conectado, sale en unos segundos. Sus pedidos ya hechos no cambian.<br>' +
+      'Cada alumno puede estar conectado <b>una sola vez</b> como Alumno, como Mamá y como Papá. Si alguien no puede entrar porque su sesión quedó abierta en otro celular, usa «cerrar sesión».</p>',
       '<button class="btn btn-navy" data-cerrar>Listo</button>', true);
     S.modalNoBloquea = true;
 
@@ -1350,7 +1474,10 @@
           '<span class="usr-ini">' + esc(u.nombre.split(' ').map(function (x) { return x[0]; }).join('').slice(0, 2)) + '</span>' +
           '<span class="prod-dato"><b>' + esc(u.nombre) + (yo ? ' (tú)' : '') + '</b><small>' + esc(u.curso) + ' · ' + u.pedidos + (u.pedidos === 1 ? ' pedido' : ' pedidos') +
             (u.admin ? ' · <span class="etq-admin">Admin</span>' : '') +
-            (u.frenado && !u.bloqueado ? ' · <button type="button" class="link-liberar" data-liberar="' + u.id + '">⚠️ trabado por intentos: liberar</button>' : '') + '</small></span>' +
+            (u.frenado && !u.bloqueado ? ' · <button type="button" class="link-liberar" data-liberar="' + u.id + '">⚠️ trabado por intentos: liberar</button>' : '') +
+            (u.sesiones && u.sesiones.length ? '<br><span class="usr-sesiones">🟢 Conectado: ' + u.sesiones.map(function (t) {
+              return esc(t) + ' <button type="button" class="link-liberar" data-cerrar-ses="' + u.id + '" data-tipo="' + esc(t) + '">cerrar sesión</button>';
+            }).join(' · ') + '</span>' : '') + '</small></span>' +
           '<label class="interruptor" title="' + (yo ? 'No puedes bloquearte a ti mismo' : (u.bloqueado ? 'Desbloquear' : 'Bloquear')) + '">' +
             '<input type="checkbox" data-usr="' + u.id + '"' + (u.bloqueado ? '' : ' checked') + (yo || u.guardando ? ' disabled' : '') + '>' +
             '<span class="pista"></span><span class="txt">' + (u.bloqueado ? 'Bloqueado' : 'Habilitado') + '</span></label></li>';
@@ -1378,6 +1505,17 @@
       var c = ev.target.closest('#filtrosUsr .chip'); if (c) { ver = c.dataset.v; pintar(); return; }
       var lb = ev.target.closest('[data-liberar]');
       if (lb) { var ul = lista.filter(function (x) { return x.id === Number(lb.dataset.liberar); })[0]; if (ul) cambiar(ul, false); }
+      var cs = ev.target.closest('[data-cerrar-ses]');
+      if (cs) {
+        var uc = lista.filter(function (x) { return x.id === Number(cs.dataset.cerrarSes); })[0]; if (!uc) return;
+        var tp = cs.dataset.tipo;
+        if (!confirm('¿Cerrar la sesión de ' + uc.nombre + (tp !== 'Alumno' ? ' (' + tp + ')' : '') + '?\nEse equipo vuelve a la pantalla de ingreso y podrá entrar desde otro.')) return;
+        cs.disabled = true;
+        api('sesionCerrar', { id: uc.id, tipo: tp }, { silencioso: true }).then(function () {
+          uc.sesiones = uc.sesiones.filter(function (t) { return t !== tp; }); pintar();
+          toast('Sesión cerrada: ' + uc.nombre + (tp !== 'Alumno' ? ' (' + tp + ')' : '') + ' ✔', 'ok');
+        }).catch(function (e) { cs.disabled = false; toast('No se pudo cerrar la sesión: ' + e.message, 'mal'); });
+      }
     };
     mc.onchange = function (ev) {
       var inp = ev.target.closest('input[data-usr]'); if (!inp) return;
@@ -1388,6 +1526,256 @@
       }
       cambiar(u, bloquear);
     };
+  }
+
+  /* ================= Cajeros móviles (Administrador) ================= */
+  /*
+   * Un cajero móvil es un apoderado (Mamá o Papá de un alumno) con uno o más
+   * talonarios asignados. Cada talonario es de un solo cajero: al vender, el
+   * cajero solo puede usar los suyos y nadie más puede usar esos números.
+   */
+  $('#btnCajerosAdm').addEventListener('click', abrirCajerosAdmin);
+
+  // "12, 15 20-23" → [12, 15, 20, 21, 22, 23]; null si hay algo que no es número
+  function leerTalonarios(txt) {
+    var limpio = String(txt || '').replace(/n\s*[°º.]|#|°|º/gi, ' ').replace(/\s*-\s*/g, '-');
+    var partes = limpio.split(/[,;\s]+/).filter(Boolean), res = [];
+    for (var i = 0; i < partes.length; i++) {
+      var m = partes[i].match(/^(\d{1,6})(?:-(\d{1,6}))?$/);
+      if (!m) return null;
+      var a = Number(m[1]), b = m[2] ? Number(m[2]) : a;
+      if (a < 1 || b < a || b - a > 49) return null;
+      for (var n = a; n <= b; n++) res.push(n);
+    }
+    return res;
+  }
+  function iniciales(nombre) {
+    return esc(String(nombre || '').split(' ').map(function (x) { return x[0] || ''; }).join('').slice(0, 2));
+  }
+
+  function abrirCajerosAdmin() {
+    var cajeros = [], alumnos = [], tipos = [], q = '', form = null;
+    abrirModal('Cajeros móviles', '<div id="vistaListaCaj">' +
+        '<div class="barra-acciones"><input id="buscaCaj" type="search" placeholder="Buscar apoderado, curso o N° de talonario…" aria-label="Buscar cajero">' +
+        '<button class="btn btn-rojo btn-chico" type="button" id="btnNuevoCaj">＋ Nuevo cajero móvil</button></div>' +
+        '<ul class="lista-prod-adm" id="listaCaj"><li class="vacio">Cargando cajeros…</li></ul>' +
+        '<p class="nota">Un <b>cajero móvil</b> es la Mamá o el Papá de un alumno con talonarios asignados. Entra a la app como ' +
+        '<b>Vendedor</b> (curso, alumno y «Mamá» o «Papá») y al vender debe usar uno de sus talonarios. Un talonario es de un solo cajero ' +
+        '(los vendedores normales sí pueden usar cualquier número). ' +
+        'Toca un cajero para agregar o quitar talonarios.</p></div>' +
+      '<div id="vistaFormCaj" hidden></div>',
+      '<button class="btn btn-navy" data-cerrar>Listo</button>', true);
+    S.modalNoBloquea = true;
+
+    function cargar() {
+      return api('cajerosTodos', {}, { silencioso: true }).then(function (r) {
+        cajeros = r.cajeros; alumnos = r.alumnos; tipos = r.tipos; pintar();
+      }).catch(function (e) {
+        var el = $('#listaCaj'); if (el) el.innerHTML = '<li class="vacio">No se pudieron cargar: ' + esc(e.message) + '</li>';
+      });
+    }
+
+    function pintar() {
+      var el = $('#listaCaj'); if (!el) return;
+      var qn = norm(q).trim(), qd = qn.replace(/\D/g, '');
+      var vis = cajeros.filter(function (c) {
+        if (!qn) return true;
+        if (norm(c.tipo + ' de ' + c.nombre + ' ' + c.curso).indexOf(qn) >= 0) return true;
+        return qd && qd === qn.replace(/[^\d]/g, '') && c.talonarios.some(function (t) { return String(t).indexOf(qd) === 0; });
+      });
+      el.innerHTML = vis.length ? vis.map(function (c) {
+        return '<li class="prod-fila usr-fila caj-fila">' +
+          '<span class="usr-ini">' + iniciales(c.nombre) + '</span>' +
+          '<button type="button" class="prod-dato" data-editar-caj="' + c.id + '" data-tipo="' + esc(c.tipo) + '">' +
+            '<b>' + esc(c.tipo) + ' de ' + esc(c.nombre) + ' <i class="lapiz">✏️</i></b>' +
+            '<small>' + esc(c.curso) + ' · ' + c.pedidos + (c.pedidos === 1 ? ' pedido' : ' pedidos') + ' · ' + plata(c.vendido) + '</small></button>' +
+          '<span class="tal-chips">' + c.talonarios.map(function (t) { return '<span class="tal-chip">N° ' + t + '</span>'; }).join('') + '</span></li>';
+      }).join('') : '<li class="vacio">' + (cajeros.length ? 'Ningún cajero coincide con la búsqueda.'
+        : 'Aún no hay cajeros móviles.<br>Crea el primero con «＋ Nuevo cajero móvil».') + '</li>';
+    }
+
+    function abrirForm(c) {
+      var nuevo = !c;
+      form = { nuevo: nuevo, id: nuevo ? null : c.id, tipo: nuevo ? '' : c.tipo, talonarios: nuevo ? [] : c.talonarios.slice(),
+               ops: [], activo: -1, guardando: false };
+      $('#vistaListaCaj').hidden = true;
+      var v = $('#vistaFormCaj'); v.hidden = false;
+      var al = nuevo ? null : alumnos.filter(function (a) { return a.id === c.id; })[0];
+      v.innerHTML = '<h4 class="form-prod-titulo">' + (nuevo ? 'Nuevo cajero móvil' : 'Editar cajero móvil') + '</h4>' +
+        '<div class="form-prod tarjeta">' +
+          '<div class="campo"><label for="cajAlumno">Alumno *</label><div class="combo">' +
+            '<input id="cajAlumno" type="text" autocomplete="off" spellcheck="false" placeholder="Escribe el nombre o elige de la lista…" ' +
+              'role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cajOpciones"' +
+              (al ? ' value="' + esc(al.nombre + ' · ' + al.curso) + '" disabled' : '') + '>' +
+            (nuevo ? '<button type="button" class="combo-flecha" id="cajFlecha" tabindex="-1" aria-label="Ver lista de alumnos">▾</button>' : '') +
+            '<ul class="combo-lista" id="cajOpciones" role="listbox" hidden></ul></div></div>' +
+          '<div class="campo"><span>Apoderado *</span><div class="chips" id="cajTipos">' + tipos.map(function (t) {
+            return '<label><input type="radio" name="cajTipo" value="' + esc(t) + '"' + (form.tipo === t ? ' checked' : '') + (nuevo ? '' : ' disabled') + '><span>' + esc(t) + '</span></label>';
+          }).join('') + '</div></div>' +
+          '<div class="campo"><label for="cajTalNuevo">Talonarios * <small>(uno o varios: 12, 15 · o un rango: 20-25)</small></label>' +
+            '<div class="talonario-fila"><input id="cajTalNuevo" maxlength="60" placeholder="N° de talonario" autocomplete="off">' +
+            '<button class="btn btn-navy btn-chico" type="button" id="btnAgregarTal">＋ Agregar</button></div>' +
+            '<div class="tal-chips" id="cajTalonarios"></div></div>' +
+          '<p class="error" id="errCaj"></p>' +
+          '<div class="acciones"><button class="btn btn-borde" type="button" id="btnVolverCaj">Volver</button>' +
+            (nuevo ? '' : '<button class="btn btn-peligro" type="button" id="btnBorrarCaj">Quitar cajero</button>') +
+            '<button class="btn btn-rojo" type="button" id="btnGuardarCaj">' + (nuevo ? 'Crear cajero' : 'Guardar cambios') + '</button></div>' +
+        '</div>';
+      pintarTals();
+      (nuevo ? $('#cajAlumno') : $('#cajTalNuevo')).focus();
+    }
+
+    function cerrarForm() {
+      form = null;
+      $('#vistaFormCaj').hidden = true; $('#vistaFormCaj').innerHTML = '';
+      $('#vistaListaCaj').hidden = false;
+    }
+
+    function pintarTals() {
+      var el = $('#cajTalonarios'); if (!el || !form) return;
+      form.talonarios.sort(function (a, b) { return a - b; });
+      el.innerHTML = form.talonarios.length ? form.talonarios.map(function (t) {
+        return '<span class="tal-chip">N° ' + t + '<button type="button" data-quitar-tal="' + t + '" aria-label="Quitar talonario ' + t + '">×</button></span>';
+      }).join('') : '<small>Sin talonarios todavía.</small>';
+    }
+
+    function agregarTal() {
+      var inp = $('#cajTalNuevo'), err = $('#errCaj'); err.textContent = '';
+      var ns = leerTalonarios(inp.value);
+      if (!ns || !ns.length) { err.textContent = 'Escribe números de talonario (ej.: 12, 15 o 20-25).'; inp.focus(); return false; }
+      var ajenos = [];
+      ns.forEach(function (n) {
+        var dueno = cajeros.filter(function (c) { return !(c.id === form.id && c.tipo === form.tipo) && c.talonarios.indexOf(n) >= 0; })[0];
+        if (dueno) ajenos.push('N° ' + n + ' (' + dueno.tipo + ' de ' + dueno.nombre + ')');
+        else if (form.talonarios.indexOf(n) < 0) form.talonarios.push(n);
+      });
+      if (form.talonarios.length > 50) { form.talonarios = form.talonarios.slice(0, 50); err.textContent = 'Máximo 50 talonarios por cajero.'; }
+      if (ajenos.length) err.textContent = 'Ya asignado a otro cajero: ' + ajenos.join(', ') + '.';
+      inp.value = ''; inp.focus(); pintarTals();
+      return !ajenos.length;
+    }
+
+    // ---- lista desplegable de alumnos con autocompletado
+    function pintarCombo(abrir, todos) {
+      var ul = $('#cajOpciones'), inp = $('#cajAlumno'); if (!ul || !form) return;
+      if (!abrir) { ul.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); return; }
+      var qn = todos ? '' : norm(inp.value).trim();
+      form.ops = alumnos.filter(function (a) { return !qn || norm(a.nombre + ' ' + a.curso).indexOf(qn) >= 0; });
+      if (form.activo >= form.ops.length) form.activo = form.ops.length - 1;
+      ul.innerHTML = form.ops.length ? form.ops.map(function (a, i) {
+        var ya = cajeros.filter(function (c) { return c.id === a.id; }).map(function (c) { return c.tipo; });
+        return '<li role="option" id="cajOp' + i + '" data-ix="' + i + '"' + (i === form.activo ? ' class="activo" aria-selected="true"' : ' aria-selected="false"') + '>' +
+          '<b>' + esc(a.nombre) + '</b><small>' + esc(a.curso) + (ya.length ? ' · cajero: ' + esc(ya.join(', ')) : '') + '</small></li>';
+      }).join('') : '<li class="sin">Ningún alumno coincide.</li>';
+      ul.hidden = false; inp.setAttribute('aria-expanded', 'true');
+      var act = $('#cajOp' + form.activo);
+      if (act) { act.scrollIntoView({ block: 'nearest' }); inp.setAttribute('aria-activedescendant', act.id); }
+    }
+
+    function elegirAlumno(a) {
+      form.id = a.id;
+      var inp = $('#cajAlumno');
+      inp.value = a.nombre + ' · ' + a.curso; inp.classList.remove('invalido');
+      pintarCombo(false);
+      // el tipo que ya es cajero de este alumno no se puede crear de nuevo
+      var ya = cajeros.filter(function (c) { return c.id === a.id; }).map(function (c) { return c.tipo; });
+      $$('#cajTipos input').forEach(function (r) { r.disabled = ya.indexOf(r.value) >= 0; if (r.disabled) r.checked = false; });
+      $('#errCaj').textContent = ya.length ? a.nombre + ' ya tiene cajero: ' + ya.join(', ') + '. Para cambiar sus talonarios, edítalo en la lista.' : '';
+      var libres = $$('#cajTipos input:not([disabled])');
+      if (libres.length === 1) libres[0].checked = true;
+      if (!$('#cajTipos input:checked') && libres.length) libres[0].focus(); else $('#cajTalNuevo').focus();
+    }
+
+    function guardar() {
+      if (!form || form.guardando) return;
+      var err = $('#errCaj'); err.textContent = '';
+      if ($('#cajTalNuevo').value.trim() && !agregarTal()) return;     // número escrito sin presionar Agregar
+      if (!form.id) { $('#cajAlumno').classList.add('invalido'); err.textContent = 'Elige el alumno de la lista.'; return $('#cajAlumno').focus(); }
+      var tipo = ($('#cajTipos input:checked') || {}).value;
+      if (!tipo) { err.textContent = 'Elige si el cajero es la Mamá o el Papá.'; return; }
+      if (!form.talonarios.length) { err.textContent = 'Agrega al menos un N° de talonario.'; return $('#cajTalNuevo').focus(); }
+      form.guardando = true;
+      var b = $('#btnGuardarCaj'); b.disabled = true; b.textContent = 'Guardando…';
+      api('cajeroGuardar', { id: form.id, tipo: tipo, talonarios: form.talonarios, nuevo: form.nuevo }, { silencioso: true }).then(function (r) {
+        toast((r.nuevo ? 'Cajero creado: ' : 'Cajero actualizado: ') + r.tipo + ' de ' + r.nombre + ' · talonarios ' + r.talonarios.join(', ') + ' ✔', 'ok');
+        cerrarForm();
+        return cargar();
+      }).catch(function (e) {
+        if (!form) return;
+        err.textContent = e.message;
+        form.guardando = false; b.disabled = false; b.textContent = form.nuevo ? 'Crear cajero' : 'Guardar cambios';
+      });
+    }
+
+    function borrar() {
+      if (!form || form.guardando) return;
+      var c = cajeros.filter(function (x) { return x.id === form.id && x.tipo === form.tipo; })[0]; if (!c) return;
+      if (!confirm('¿Quitar a ' + c.tipo + ' de ' + c.nombre + ' como cajero móvil?\nSus talonarios (' + c.talonarios.join(', ') + ') quedan libres. Los pedidos ya hechos conservan su talonario.')) return;
+      form.guardando = true;
+      api('cajeroBorrar', { id: c.id, tipo: c.tipo }, { silencioso: true }).then(function () {
+        toast('Se quitó el cajero móvil ' + c.tipo + ' de ' + c.nombre, 'ok');
+        cerrarForm(); return cargar();
+      }).catch(function (e) { if (form) { form.guardando = false; $('#errCaj').textContent = e.message; } });
+    }
+
+    var mc = $('#modalCuerpo');
+    mc.oninput = function (ev) {
+      if (ev.target.id === 'buscaCaj') { q = ev.target.value; pintar(); return; }
+      if (ev.target.id === 'cajAlumno' && form) {
+        form.id = null; form.activo = 0;
+        $$('#cajTipos input').forEach(function (r) { r.disabled = false; });
+        $('#errCaj').textContent = '';
+        pintarCombo(true);
+      }
+    };
+    mc.onkeydown = function (ev) {
+      if (!form) return;
+      if (ev.target.id === 'cajAlumno') {
+        var abierto = !$('#cajOpciones').hidden;
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          if (!abierto) { form.activo = 0; return pintarCombo(true, !!form.id); }
+          var n = form.ops.length; if (!n) return;
+          form.activo = (form.activo + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n;
+          pintarCombo(true, !!form.id);
+        } else if (ev.key === 'Enter') {
+          ev.preventDefault();
+          if (abierto && form.ops[form.activo]) elegirAlumno(form.ops[form.activo]);
+          else if (abierto && form.ops.length === 1) elegirAlumno(form.ops[0]);
+        } else if (ev.key === 'Escape' && abierto) {
+          ev.stopPropagation(); pintarCombo(false);          // cierra la lista, no la ventana
+        }
+      } else if (ev.target.id === 'cajTalNuevo' && ev.key === 'Enter') {
+        ev.preventDefault(); agregarTal();
+      }
+    };
+    mc.onclick = function (ev) {
+      if (ev.target.closest('#btnNuevoCaj')) return abrirForm(null);
+      var ed = ev.target.closest('[data-editar-caj]');
+      if (ed) {
+        var c = cajeros.filter(function (x) { return x.id === Number(ed.dataset.editarCaj) && x.tipo === ed.dataset.tipo; })[0];
+        if (c) abrirForm(c);
+        return;
+      }
+      if (!form) return;
+      var op = ev.target.closest('#cajOpciones li[data-ix]');
+      if (op) return elegirAlumno(form.ops[Number(op.dataset.ix)]);
+      if (ev.target.closest('#cajFlecha')) {
+        if ($('#cajOpciones').hidden) { form.activo = -1; pintarCombo(true, true); $('#cajAlumno').focus(); } else pintarCombo(false);
+        return;
+      }
+      if (ev.target.id === 'cajAlumno') { if ($('#cajOpciones').hidden) pintarCombo(true, !!form.id); return; }
+      if (!ev.target.closest('.combo')) pintarCombo(false);
+      var qt = ev.target.closest('[data-quitar-tal]');
+      if (qt) { var t = Number(qt.dataset.quitarTal); form.talonarios = form.talonarios.filter(function (x) { return x !== t; }); return pintarTals(); }
+      if (ev.target.closest('#btnAgregarTal')) return agregarTal();
+      if (ev.target.closest('#btnVolverCaj')) return cerrarForm();
+      if (ev.target.closest('#btnGuardarCaj')) return guardar();
+      if (ev.target.closest('#btnBorrarCaj')) return borrar();
+    };
+    mc.onchange = function (ev) { if (ev.target.name === 'cajTipo') $('#errCaj').textContent = ''; };
+
+    cargar();
   }
 
   /* ================= Impresora ================= */
@@ -1453,7 +1841,7 @@
     $('#modal').hidden = true;
     S.modalNoBloquea = false;
     S.repintarPanel = null;
-    var mc = $('#modalCuerpo'); mc.onclick = null; mc.onchange = null; mc.oninput = null; mc.innerHTML = '';
+    var mc = $('#modalCuerpo'); mc.onclick = null; mc.onchange = null; mc.oninput = null; mc.onkeydown = null; mc.innerHTML = '';
   }
   $('#modal').addEventListener('click', function (ev) { if (ev.target.closest('[data-cerrar]')) cerrarModal(); });
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !$('#modal').hidden) cerrarModal(); });
