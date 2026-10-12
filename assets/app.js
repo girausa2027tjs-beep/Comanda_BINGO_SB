@@ -287,7 +287,7 @@
   function salir(msg) {
     if (S.token && !msg) api('logout', {}, { silencioso: true }).catch(function () {});
     clearInterval(S.timer);
-    S.token = null; S.usuario = null; S.carrito = {}; S.edit = null; S.reqId = null; S.talonarios = [];
+    S.token = null; S.usuario = null; S.carrito = {}; S.edit = null; S.reqId = null; S.talonarios = []; S.talMap = {}; S.talCargados = false;
     S.mis = []; S.todos = []; S.cargado = { mis: false, todos: false }; S.enviando = [];
     clearTimeout(S.timer); S.desde = { mis: null, todos: null };
     ['#listaMis', '#listaAdmin'].forEach(function (s) { $(s).innerHTML = '<div class="vacio">Cargando pedidos…</div>'; });
@@ -307,7 +307,7 @@
     $('#vistaApp').hidden = false;
     var u = S.usuario;
     $('#lblUsuario').textContent = u.nombre + ' · ' + u.curso;
-    S.talonarios = [];
+    S.talonarios = []; S.talMap = {}; S.talCargados = false;
     etiquetaPerfil();
     var admin = u.perfil === 'admin';
     if (!admin) pintarTalonario(false);
@@ -324,8 +324,7 @@
 
   function etiquetaPerfil() {
     var u = S.usuario; if (!u) return;
-    $('#lblPerfil').textContent = (u.perfil === 'admin' ? 'ADMINISTRADOR' : 'VENDEDOR') + (u.tipo && u.tipo !== 'Alumno' ? ' · ' + u.tipo.toUpperCase() : '') +
-      (u.perfil !== 'admin' && S.talonarios.length ? ' · CAJERO MÓVIL' : '');
+    $('#lblPerfil').textContent = (u.perfil === 'admin' ? 'ADMINISTRADOR' : 'VENDEDOR') + (u.tipo && u.tipo !== 'Alumno' ? ' · ' + u.tipo.toUpperCase() : '');
   }
 
   /*
@@ -468,74 +467,65 @@
   });
 
   /*
-   * N° de talonario: el vendedor lo escribe una vez y queda fijo en este equipo
-   * (para este alumno + tipo) hasta que presione "Cambiar". Un cajero móvil
-   * solo puede usar sus talonarios asignados (se muestran como botones).
+   * N° de talonario (OBLIGATORIO): el talonario de papel lo tiene el cajero
+   * móvil (apoderado a cargo de los garzones). El vendedor lo escribe una vez
+   * y queda fijo en este equipo hasta que presione "Cambiar". Puede usar un
+   * talonario que aún no tiene cajero: el Administrador lo asigna después y la
+   * recaudación de cada cajero (efectivo y transferencia) se recalcula sola.
    */
-  S.talonarios = [];
+  S.talonarios = []; S.talMap = {}; S.talCargados = false;
   function claveTal() { return 'comandas_talonario_' + (S.usuario ? S.usuario.id + '_' + norm(S.usuario.tipo) : ''); }
   function talGuardado() { try { return localStorage.getItem(claveTal()) || ''; } catch (e) { return ''; } }
   function talGuardar(v) { try { if (v) localStorage.setItem(claveTal(), v); else localStorage.removeItem(claveTal()); } catch (e) {} }
   function limpiarTal(v) { return String(v == null ? '' : v).replace(/[\s#°ºNn.]/g, ''); }
+  function cajeroDe(n) { return n ? S.talMap[Number(n)] || '' : ''; }
+  function etiquetaTal(n) {
+    if (!n) return '';
+    var c = cajeroDe(n);
+    return '<span class="etq-tal">🧾 Talonario N° ' + esc(n) + (c ? ' · ' + esc(c) : '') + '</span>';
+  }
+  function nombreCliente(c) { return c ? esc(c) : '<span class="sin-nombre">Sin nombre</span>'; }
 
   // editando: true = dejar el campo abierto; false = mostrar el guardado; undefined = mantener
   function pintarTalonario(editando) {
     var inp = $('#inpTalonario'); if (!inp || !S.usuario || S.usuario.perfil === 'admin') return;
     if (editando === undefined) editando = !inp.readOnly && document.activeElement === inp;
-    var asig = S.talonarios || [];
-    if (!S.edit) {
-      var g = talGuardado();
-      if (asig.length && g && asig.indexOf(Number(g)) < 0) { g = ''; talGuardar(''); }   // ya no es suyo
-      if (!g && asig.length === 1) { g = String(asig[0]); talGuardar(g); }
-      if (!editando) inp.value = g;
-    }
+    if (!S.edit && !editando) inp.value = talGuardado();
     var fijo = !editando && !S.edit && !!inp.value;
     inp.readOnly = fijo;
     inp.classList.toggle('fijo', fijo);
     var b = $('#btnTalonario');
     b.textContent = fijo ? '✏️ Cambiar' : '✔ Fijar';
     b.hidden = !!S.edit;
-    $('#talAyuda').textContent = S.edit ? '(de este pedido)'
-      : asig.length ? '· Cajero móvil, tus talonarios: ' + asig.join(', ')
-      : '(opcional · se mantiene hasta que lo cambies)';
-    var cont = $('#talAsignados');
-    cont.hidden = fijo || asig.length < 2;
-    cont.innerHTML = asig.length < 2 ? '' : 'Elige: ' + asig.map(function (t) {
-      return '<button type="button" data-tal="' + t + '">N° ' + t + '</button>';
-    }).join('');
+    $('#talAyuda').textContent = S.edit ? '(de este pedido)' : '(se mantiene hasta que lo cambies)';
+    var info = $('#talCajero'), v = limpiarTal(inp.value), c = cajeroDe(v);
+    info.className = 'tal-cajero';
+    if (v && c) { info.textContent = '👤 Cajero móvil: ' + c; }
+    else if (v && S.talCargados && /^\d+$/.test(v)) { info.textContent = 'Talonario aún sin cajero asignado (el Administrador lo asigna después).'; info.className = 'tal-cajero pendiente'; }
+    else info.textContent = '';
+    info.hidden = !info.textContent;
   }
 
   function fijarTalonario(avisar) {
     var inp = $('#inpTalonario'), v = limpiarTal(inp.value);
-    if (v && !/^\d{1,6}$/.test(v)) { inp.classList.add('invalido'); toast('El N° de talonario debe ser un número (por ejemplo 12).', 'mal'); return false; }
-    if (v && Number(v) < 1) { inp.classList.add('invalido'); toast('El N° de talonario debe ser mayor que 0.', 'mal'); return false; }
-    if (v && S.talonarios.length && S.talonarios.indexOf(Number(v)) < 0) {
-      inp.classList.add('invalido'); toast('El talonario N° ' + Number(v) + ' no es tuyo. Tus talonarios: ' + S.talonarios.join(', '), 'mal'); return false;
-    }
+    if (v && (!/^\d{1,6}$/.test(v) || Number(v) < 1)) { inp.classList.add('invalido'); toast('El N° de talonario debe ser un número (por ejemplo 12).', 'mal'); return false; }
     inp.classList.remove('invalido');
     inp.value = v ? String(Number(v)) : '';
     if (!S.edit) {
       var antes = talGuardado();
       talGuardar(inp.value);
       pintarTalonario(false);
-      if (avisar && inp.value && inp.value !== antes) toast('Talonario N° ' + inp.value + ' fijado ✔', 'ok');
-    }
+      if (avisar && inp.value && inp.value !== antes) toast('Talonario N° ' + inp.value + ' fijado ✔' + (cajeroDe(inp.value) ? ' (' + cajeroDe(inp.value) + ')' : ''), 'ok');
+    } else pintarTalonario(true);
     return true;
   }
 
   // mousedown sin quitar el foco: así "Fijar" no se confunde con salir del campo
-  ['#btnTalonario', '#talAsignados'].forEach(function (sel) {
-    $(sel).addEventListener('mousedown', function (ev) { if (ev.target.closest('button')) ev.preventDefault(); });
-  });
+  $('#btnTalonario').addEventListener('mousedown', function (ev) { ev.preventDefault(); });
   $('#btnTalonario').addEventListener('click', function () {
     var inp = $('#inpTalonario');
     if (inp.readOnly) { pintarTalonario(true); inp.focus(); inp.select(); return; }
     if (fijarTalonario(true) && inp.value) inp.blur();
-  });
-  $('#talAsignados').addEventListener('click', function (ev) {
-    var b = ev.target.closest('[data-tal]'); if (!b) return;
-    $('#inpTalonario').value = b.dataset.tal; S.reqId = null;
-    fijarTalonario(true);
   });
   $('#inpTalonario').addEventListener('change', function () { if (!this.readOnly) fijarTalonario(true); });
   $('#inpTalonario').addEventListener('keydown', function (ev) {
@@ -565,18 +555,16 @@
   function validarCabecera() {
     var tal = $('#inpTalonario');
     if (!tal.readOnly && !fijarTalonario(false)) { tal.focus(); return false; }
-    if (S.talonarios.length && !tal.value) {
+    if (!tal.value) {
       tal.classList.add('invalido'); tal.focus();
-      toast('Escribe tu N° de talonario (tienes: ' + S.talonarios.join(', ') + ').', 'mal');
+      toast('Escribe el N° de talonario (es obligatorio).', 'mal');
       return false;
     }
-    var mesa = $('#inpMesa'), cli = $('#inpCliente'), ok = true;
-    [mesa, cli].forEach(function (i) { i.classList.remove('invalido'); });
-    if (!mesa.value.trim()) { mesa.classList.add('invalido'); ok = false; }
-    else if (!/^[0-9A-Za-z\- ]+$/.test(mesa.value.trim())) { mesa.classList.add('invalido'); toast('La mesa solo admite números y letras.', 'mal'); return false; }
-    if (cli.value.trim().length < 2) { cli.classList.add('invalido'); ok = false; }
-    if (!ok) { toast('Completa el número de mesa y el nombre del cliente.', 'mal'); (mesa.value.trim() ? cli : mesa).focus(); }
-    return ok;
+    var mesa = $('#inpMesa');
+    mesa.classList.remove('invalido');
+    if (!mesa.value.trim()) { mesa.classList.add('invalido'); toast('Escribe el número de mesa.', 'mal'); mesa.focus(); return false; }
+    if (!/^[0-9A-Za-z\- ]+$/.test(mesa.value.trim())) { mesa.classList.add('invalido'); toast('La mesa solo admite números y letras.', 'mal'); return false; }
+    return true;
   }
 
   $('#btnRevisar').addEventListener('click', function () {
@@ -602,8 +590,8 @@
     var tv = S.tipoVenta;
     var cuerpo = function () {
       var com = $('#inpComentario').value.trim(), tal = $('#inpTalonario').value.trim();
-      return '<div class="detalle-cabeza"><div><div class="pedido-meta">Cliente</div><div class="pedido-cliente">' + esc($('#inpCliente').value.trim()) + '</div>' +
-        (tal ? '<span class="etq-tal">🧾 Talonario N° ' + esc(tal) + '</span>' : '') +
+      return '<div class="detalle-cabeza"><div><div class="pedido-meta">Cliente</div><div class="pedido-cliente">' + nombreCliente($('#inpCliente').value.trim()) + '</div>' +
+        etiquetaTal(tal) +
         (com ? '<div class="pedido-coment">📝 ' + esc(com) + '</div>' : '') + '</div>' +
         '<div class="pedido-mesa"><small>MESA</small><b>' + esc($('#inpMesa').value.trim()) + '</b></div></div>' +
         lineasCarritoHTML() +
@@ -731,8 +719,8 @@
       '<div class="pedido-cabeza"><div class="pedido-num"><small>' + env.hora + '</small>' +
       (env.estado === 'error' ? '⚠️ Sin guardar' : '<span class="mini-spin"></span> Guardando…') + '</div>' +
       '<div class="pedido-mesa"><small>MESA</small><b>' + esc(env.datos.mesa) + '</b></div></div>' +
-      '<div class="pedido-cliente">' + esc(env.datos.cliente) + '</div>' +
-      (env.datos.talonario ? '<span class="etq-tal">🧾 Talonario N° ' + esc(env.datos.talonario) + '</span>' : '') +
+      '<div class="pedido-cliente">' + nombreCliente(env.datos.cliente) + '</div>' +
+      etiquetaTal(env.datos.talonario) +
       (env.datos.comentario ? '<div class="pedido-coment">📝 ' + esc(env.datos.comentario) + '</div>' : '') +
       '<ul class="pedido-items">' + env.lineas.map(function (i) {
         return '<li><span><b>' + i.cantidad + '×</b> ' + esc(i.nombre) + '</span><span>' + plata(i.subtotal) + '</span></li>';
@@ -865,8 +853,10 @@
       if (r.version != null) { S.version = S.version || {}; S.version.productos = r.version; }
       S.productos = r.productos;
       if (Array.isArray(r.talonarios)) {
-        S.talonarios = r.talonarios.map(Number);
-        if (S.usuario && S.usuario.perfil !== 'admin') { etiquetaPerfil(); pintarTalonario(); }
+        S.talonarios = r.talonarios; S.talMap = {}; S.talCargados = true;
+        r.talonarios.forEach(function (t) { S.talMap[t.n] = t.cajero; });
+        if (S.usuario && S.usuario.perfil !== 'admin') pintarTalonario();
+        else if (S.cargado.todos) renderAdmin();
       }
       S.prodMap = {};
       r.productos.forEach(function (p) { S.prodMap[p.id] = p; });
@@ -973,8 +963,8 @@
     return '<article class="pedido" data-num="' + p.numero + '" data-estado="' + esc(p.estado) + '">' +
       '<div class="pedido-cabeza"><div class="pedido-num"><small>' + esc(p.fecha) + ' · ' + esc(p.hora.slice(0, 5)) + '</small>#' + p.numero + '</div>' +
       '<div class="pedido-mesa"><small>MESA</small><b>' + esc(p.mesa) + '</b></div></div>' +
-      '<div class="pedido-cliente">' + esc(p.cliente) + '</div>' +
-      (p.talonario ? '<span class="etq-tal">🧾 Talonario N° ' + esc(p.talonario) + '</span>' : '') +
+      '<div class="pedido-cliente">' + nombreCliente(p.cliente) + '</div>' +
+      etiquetaTal(p.talonario) +
       (p.comentario ? '<div class="pedido-coment">📝 ' + esc(p.comentario) + '</div>' : '') +
       (modo === 'admin' ? '<div class="pedido-meta">Vende: ' + esc(p.usuario) + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' : '') +
       '<ul class="pedido-items">' + p.items.map(function (i) {
@@ -995,7 +985,7 @@
     var acc = b.dataset.acc;
     if (acc === 'editar') return editarPedidoVendedor(p);
     if (acc === 'entregar') return cambiarEstado(p, 3, '¿Marcar el pedido #' + p.numero + ' como ENTREGADO?');
-    if (acc === 'eliminar') return cambiarEstado(p, 4, '¿Eliminar el pedido #' + p.numero + ' (' + p.cliente + ')? Quedará marcado como Eliminado.');
+    if (acc === 'eliminar') return cambiarEstado(p, 4, '¿Eliminar el pedido #' + p.numero + ' (' + (p.cliente || 'mesa ' + p.mesa) + ')? Quedará marcado como Eliminado.');
   });
 
   function editarPedidoVendedor(p) {
@@ -1090,7 +1080,7 @@
     var lista = S.todos.filter(function (p) {
       if (!pasaFiltro(p, S.filtroAdmin)) return false;
       if (!q) return true;
-      return norm(['#' + p.numero, p.numero, 'mesa ' + p.mesa, p.cliente, p.usuario, p.talonario ? 'talonario ' + p.talonario : ''].join(' ')).indexOf(q) >= 0;
+      return norm(['#' + p.numero, p.numero, 'mesa ' + p.mesa, p.cliente, p.usuario, p.talonario ? 'talonario ' + p.talonario + ' ' + cajeroDe(p.talonario) : ''].join(' ')).indexOf(q) >= 0;
     });
     lista.sort(function (a, b) { return S.ordenAsc ? a.numero - b.numero : b.numero - a.numero; });
     contarChips('#filtrosAdmin', S.todos);
@@ -1137,8 +1127,8 @@
       var opciones = S.productos.filter(function (pr) { return !lineas.some(function (l) { return l.id === pr.id; }); });
       return '<div class="detalle-cabeza"><div><div class="pedido-meta">' + esc(p.fecha) + ' ' + esc(p.hora) + ' · Vende ' + esc(p.usuario) +
         (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' +
-        '<div class="pedido-cliente">' + esc(p.cliente) + '</div>' +
-        (p.talonario ? '<span class="etq-tal">🧾 Talonario N° ' + esc(p.talonario) + '</span>' : '') +
+        '<div class="pedido-cliente">' + nombreCliente(p.cliente) + '</div>' +
+        etiquetaTal(p.talonario) +
         (p.comentario ? '<div class="pedido-coment">📝 ' + esc(p.comentario) + '</div>' : '') +
         '<div><span class="estado" data-e="' + esc(p.estado) + '">' + esc(p.estado) + '</span> <span class="tipo-venta' + (norm(p.tipoVenta) === 'efectivo' ? ' efectivo' : '') + '">' + esc(p.tipoVenta) + '</span></div>' +
         historialHTML(p) + '</div>' +
@@ -1554,14 +1544,17 @@
   }
 
   function abrirCajerosAdmin() {
-    var cajeros = [], alumnos = [], tipos = [], q = '', form = null;
+    var cajeros = [], alumnos = [], tipos = [], q = '', form = null, sinCajero = null, libres = [];
     abrirModal('Cajeros móviles', '<div id="vistaListaCaj">' +
         '<div class="barra-acciones"><input id="buscaCaj" type="search" placeholder="Buscar apoderado, curso o N° de talonario…" aria-label="Buscar cajero">' +
         '<button class="btn btn-rojo btn-chico" type="button" id="btnNuevoCaj">＋ Nuevo cajero móvil</button></div>' +
+        '<div class="resumen-admin resumen-caj" id="resumenCaj"></div>' +
         '<ul class="lista-prod-adm" id="listaCaj"><li class="vacio">Cargando cajeros…</li></ul>' +
-        '<p class="nota">Un <b>cajero móvil</b> es la Mamá o el Papá de un alumno con talonarios asignados. Entra a la app como ' +
-        '<b>Vendedor</b> (curso, alumno y «Mamá» o «Papá») y al vender debe usar uno de sus talonarios. Un talonario es de un solo cajero ' +
-        '(los vendedores normales sí pueden usar cualquier número). ' +
+        '<div id="libresCaj"></div>' +
+        '<p class="nota">Un <b>cajero móvil</b> es la Mamá o el Papá de un alumno que tiene uno o más talonarios de papel y está a cargo ' +
+        'de los garzones. Cada garzón escribe en la app el N° de talonario (obligatorio) y así cada venta se suma al cajero dueño de ese talonario. ' +
+        'Se puede vender con un talonario antes de asignarlo: cuando lo asignes, sus ventas pasan a ese cajero. ' +
+        'Un talonario es de un solo cajero, pero lo pueden usar varios garzones. No cuentan los pedidos eliminados. ' +
         'Toca un cajero para agregar o quitar talonarios.</p></div>' +
       '<div id="vistaFormCaj" hidden></div>',
       '<button class="btn btn-navy" data-cerrar>Listo</button>', true);
@@ -1569,7 +1562,7 @@
 
     function cargar() {
       return api('cajerosTodos', {}, { silencioso: true }).then(function (r) {
-        cajeros = r.cajeros; alumnos = r.alumnos; tipos = r.tipos; pintar();
+        cajeros = r.cajeros; alumnos = r.alumnos; tipos = r.tipos; sinCajero = r.sinCajero || null; libres = r.libres || []; pintar();
       }).catch(function (e) {
         var el = $('#listaCaj'); if (el) el.innerHTML = '<li class="vacio">No se pudieron cargar: ' + esc(e.message) + '</li>';
       });
@@ -1577,6 +1570,18 @@
 
     function pintar() {
       var el = $('#listaCaj'); if (!el) return;
+      var suma = function (k) { return cajeros.reduce(function (t, c) { return t + (c[k] || 0); }, 0); };
+      $('#libresCaj').innerHTML = libres.length ? '<h4 class="form-prod-titulo libres-titulo">Talonarios usados sin cajero (' + libres.length + ')</h4>' +
+        '<p class="nota">Asígnalos a un cajero (tócalo en la lista o crea uno nuevo) y sus ventas se sumarán a ese cajero.</p>' +
+        '<ul class="lista-prod-adm">' + libres.map(function (l) {
+          return '<li class="prod-fila libre-fila"><span class="tal-chip">N° ' + l.n + '</span>' +
+            '<span class="prod-dato"><small>' + l.pedidos + (l.pedidos === 1 ? ' pedido' : ' pedidos') + '</small>' +
+            '<span class="caj-montos"><span>💵 Efectivo <b>' + plata(l.efectivo) + '</b></span><span>🏦 Transf. <b>' + plata(l.transferencia) + '</b></span>' +
+            '<span>Total <b>' + plata(l.total) + '</b></span></span></span></li>';
+        }).join('') + '</ul>' : '';
+      $('#resumenCaj').innerHTML = cajeros.length || libres.length ? kpi('Recaudado por cajeros', plata(suma('total'))) +
+        kpi('Efectivo', plata(suma('efectivo'))) + kpi('Transferencia', plata(suma('transferencia'))) +
+        (sinCajero && sinCajero.pedidos ? kpi('Sin cajero (' + sinCajero.pedidos + ')', plata(sinCajero.total)) : '') : '';
       var qn = norm(q).trim(), qd = qn.replace(/\D/g, '');
       var vis = cajeros.filter(function (c) {
         if (!qn) return true;
@@ -1588,8 +1593,13 @@
           '<span class="usr-ini">' + iniciales(c.nombre) + '</span>' +
           '<button type="button" class="prod-dato" data-editar-caj="' + c.id + '" data-tipo="' + esc(c.tipo) + '">' +
             '<b>' + esc(c.tipo) + ' de ' + esc(c.nombre) + ' <i class="lapiz">✏️</i></b>' +
-            '<small>' + esc(c.curso) + ' · ' + c.pedidos + (c.pedidos === 1 ? ' pedido' : ' pedidos') + ' · ' + plata(c.vendido) + '</small></button>' +
-          '<span class="tal-chips">' + c.talonarios.map(function (t) { return '<span class="tal-chip">N° ' + t + '</span>'; }).join('') + '</span></li>';
+            '<small>' + esc(c.curso) + ' · ' + c.pedidos + (c.pedidos === 1 ? ' pedido' : ' pedidos') + '</small>' +
+            '<span class="caj-montos"><span>💵 Efectivo <b>' + plata(c.efectivo) + '</b></span><span>🏦 Transf. <b>' + plata(c.transferencia) + '</b></span>' +
+            '<span>Total <b>' + plata(c.total) + '</b></span></span></button>' +
+          '<span class="tal-chips">' + c.talonarios.map(function (t) {
+            var d = (c.detalle || []).filter(function (x) { return x.n === t; })[0];
+            return '<span class="tal-chip" title="' + (d ? d.pedidos + ' pedidos' : '') + '">N° ' + t + (d && d.total ? ' · ' + plata(d.total) : '') + '</span>';
+          }).join('') + '</span></li>';
       }).join('') : '<li class="vacio">' + (cajeros.length ? 'Ningún cajero coincide con la búsqueda.'
         : 'Aún no hay cajeros móviles.<br>Crea el primero con «＋ Nuevo cajero móvil».') + '</li>';
     }

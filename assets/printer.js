@@ -224,7 +224,7 @@
     e.tam(1, 1).ln('');
     e.tam(3, 3).ln('MESA ' + p.mesa);
     e.tam(2, 2);
-    partir(p.cliente, Math.floor(w / 2)).forEach(function (l) { e.ln(l); });
+    if (p.cliente) partir(p.cliente, Math.floor(w / 2)).forEach(function (l) { e.ln(l); });
     e.tam(1, 1).negrita(false);
     if (p.comentario) {
       e.alin(0).ln('-'.repeat(w)).negrita(true).tam(1, 2);
@@ -284,7 +284,7 @@
       '<div class="c b">PEDIDO</div>' +
       '<div class="c num">#' + esc(p.numero) + '</div>' +
       '<div class="c mesa">MESA ' + esc(p.mesa) + '</div>' +
-      '<div class="c cli">' + esc(p.cliente) + '</div>' +
+      (p.cliente ? '<div class="c cli">' + esc(p.cliente) + '</div>' : '') +
       (p.comentario ? '<div class="nota-t">NOTA: ' + esc(p.comentario) + '</div>' : '') +
       '<div class="c">' + esc(p.fecha) + ' ' + esc(p.hora) + '</div>' +
       '<div class="c">Vende: ' + esc(p.usuario) + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' +
