@@ -125,8 +125,89 @@
   function reqIdPara(clave) { return pendientes[clave] || (pendientes[clave] = uuid()); }
   function confirmado(clave) { delete pendientes[clave]; }
 
-  function guardarSesion(v) { try { v ? sessionStorage.setItem('comandas_ses', JSON.stringify(v)) : sessionStorage.removeItem('comandas_ses'); } catch (e) {} }
-  function leerSesion() { try { return JSON.parse(sessionStorage.getItem('comandas_ses') || 'null'); } catch (e) { return null; } }
+  // La sesión queda guardada en el equipo (12 h): si el celular cierra el navegador
+  // o se recarga sin señal, se vuelve a la app sin tener que ingresar de nuevo.
+  function guardarSesion(v) {
+    try {
+      sessionStorage.removeItem('comandas_ses');
+      if (v) localStorage.setItem('comandas_ses', JSON.stringify(v)); else localStorage.removeItem('comandas_ses');
+    } catch (e) {}
+  }
+  function leerSesion() {
+    try { return JSON.parse(localStorage.getItem('comandas_ses') || sessionStorage.getItem('comandas_ses') || 'null'); } catch (e) { return null; }
+  }
+
+  /* ---------- Mala señal: pedidos pendientes guardados en el equipo ---------- */
+  // Los pedidos que aún no llegan al servidor se guardan en el celular: si se
+  // cierra o recarga la app, siguen ahí y se envían solos al volver la señal
+  // (mismo identificador de envío → nunca se duplican).
+  function clavePend() { return S.usuario ? 'comandas_pend_' + S.usuario.id + '_' + norm(S.usuario.tipo) : ''; }
+  function guardarPendientes() {
+    if (!S.usuario || S.usuario.perfil === 'admin') return;
+    try {
+      var lista = S.enviando.map(function (e) {
+        return { reqId: e.reqId, datos: e.datos, total: e.total, hora: e.hora, lineas: e.lineas,
+                 estado: e.estado, error: e.error, transitorio: e.transitorio, atrasado: e.atrasado };
+      });
+      if (lista.length) localStorage.setItem(clavePend(), JSON.stringify(lista)); else localStorage.removeItem(clavePend());
+    } catch (e) {}
+  }
+  function leerPendientes() {
+    try {
+      return (JSON.parse(localStorage.getItem(clavePend()) || '[]') || []).map(function (e) {
+        e.estado = 'error'; e.transitorio = e.transitorio !== false; e.atrasado = true;
+        e.error = e.error || 'Pendiente de enviar.';
+        return e;
+      });
+    } catch (e) { return []; }
+  }
+
+  /* ---------- Indicador de conexión ---------- */
+  var red = { ok: null };
+  function marcarRed(ok) {
+    if (red.ok === ok) return pintarRed();
+    red.ok = ok;
+    pintarRed();
+    if (ok && S.token) {
+      // volvió la señal: se envían al tiro los pedidos pendientes
+      reenviarPendientes();
+    }
+  }
+  // Reenvía los pedidos sin guardar de a uno, del más antiguo al más nuevo:
+  // así sus números quedan en el orden en que se tomaron.
+  var reenviando = false;
+  function reenviarPendientes(todos) {
+    if (reenviando) return;
+    var cola = S.enviando.filter(function (e) { return todos || (e.estado === 'error' && e.transitorio); }).reverse();
+    if (!cola.length) return;
+    reenviando = true;
+    cola.reduce(function (p, env) {
+      return p.then(function () { if (S.enviando.indexOf(env) >= 0 && S.token) return enviarEnFondo(env); });
+    }, Promise.resolve()).then(function () { reenviando = false; }, function () { reenviando = false; });
+  }
+  function pintarRed() {
+    var el = $('#estadoRed'); if (!el) return;
+    var pend = S.enviando.length;
+    el.hidden = !S.token;
+    el.className = 'estado-red ' + (red.ok === false ? 'sin' : pend ? 'pend' : 'ok');
+    el.textContent = (red.ok === false ? '🔴 Sin señal' : pend ? '🟡 Enviando' : '🟢 En línea') + (pend ? ' (' + pend + ')' : '');
+    el.title = red.ok === false ? 'No hay conexión con el servidor. Los pedidos quedan guardados en este celular y se envían solos.' : '';
+  }
+  window.addEventListener('online', function () { if (S.token) refrescar(true); });
+  window.addEventListener('offline', function () { marcarRed(false); });
+
+  /* ---------- Aviso grande: número del pedido que se guardó atrasado ---------- */
+  function avisoGuardado(numero, env) {
+    var cont = $('#avisosGuardados'); if (!cont) return;
+    var d = document.createElement('div');
+    d.className = 'aviso-guardado';
+    d.innerHTML = '<span class="ag-num">#' + numero + '</span><span class="ag-txt">Pedido de <b>mesa ' + esc(env.datos.mesa) + '</b>' +
+      (env.datos.cliente ? ' (' + esc(env.datos.cliente) + ')' : '') + ' guardado ✔<small>Se tomó a las ' + esc(env.hora) +
+      (env.datos.talonario ? ' · Talonario N° ' + esc(env.datos.talonario) : '') + '</small></span>' +
+      '<button type="button" class="btn btn-navy btn-chico">OK</button>';
+    d.querySelector('button').addEventListener('click', function () { d.remove(); });
+    cont.appendChild(d);
+  }
   // Identificador de este equipo (navegador). Sesión única: desde el mismo equipo
   // se puede volver a entrar aunque la sesión anterior siga abierta.
   function equipo() {
@@ -215,9 +296,10 @@
         }
         if (!silencioso) cargando(true, 'Confirmando con el servidor…');
         return new Promise(function (res) { setTimeout(res, 700 * n); }).then(correr);
-      });
+      }).catch(function (err) { if (err.transitorio) marcarRed(false); throw err; });
     }
     return correr().then(function (j) {
+      marcarRed(true);
       if (!j || !j.ok) {
         var e = new Error((j && j.error) || 'Error desconocido.');
         e.codigo = j && j.codigo;
@@ -288,7 +370,8 @@
     if (S.token && !msg) api('logout', {}, { silencioso: true }).catch(function () {});
     clearInterval(S.timer);
     S.token = null; S.usuario = null; S.carrito = {}; S.edit = null; S.reqId = null; S.talonarios = []; S.talMap = {}; S.talCargados = false;
-    S.mis = []; S.todos = []; S.cargado = { mis: false, todos: false }; S.enviando = [];
+    S.mis = []; S.todos = []; S.cargado = { mis: false, todos: false }; S.enviando = [];   // (los pendientes siguen guardados en el equipo)
+    red.ok = null; $('#estadoRed').hidden = true; $('#avisosGuardados').innerHTML = '';
     clearTimeout(S.timer); S.desde = { mis: null, todos: null };
     ['#listaMis', '#listaAdmin'].forEach(function (s) { $(s).innerHTML = '<div class="vacio">Cargando pedidos…</div>'; });
     aviso('mis', null); aviso('todos', null);
@@ -297,7 +380,7 @@
     iniciarLogin(msg);
   }
   $('#btnSalir').addEventListener('click', function () {
-    if (S.enviando.length && !confirm('Hay pedidos guardándose o sin guardar. Si sales ahora podrían perderse. ¿Salir igual?')) return;
+    if (S.enviando.length && !confirm('Hay ' + S.enviando.length + ' pedido(s) sin enviar. Quedan guardados en este celular y se enviarán cuando vuelvas a ingresar con este mismo usuario. ¿Salir igual?')) return;
     if (Object.keys(S.carrito).length && !confirm('Tienes un pedido sin enviar. ¿Salir igual?')) return;
     salir();
   });
@@ -314,8 +397,16 @@
     $('#vistaAdmin').hidden = !admin;
     $('#vistaVendedor').hidden = admin;
     $('#btnImpresora').hidden = !admin;
-    cargarProductos(false).catch(function (e) { toast(e.message, 'mal'); });
+    var guardados = productosGuardados();
+    if (guardados) aplicarProductos(guardados);      // se puede vender aunque no haya señal al abrir
+    cargarProductos(false).catch(function (e) { if (!guardados) toast(e.message, 'mal'); });
+    if (!admin) {
+      S.enviando = leerPendientes();
+      if (S.enviando.length) toast('Hay ' + S.enviando.length + ' pedido(s) pendiente(s) de enviar: se envían solos.', '');
+    }
+    pintarRed();
     if (admin) cargarTodos(); else { mostrarTab('venta'); cargarMis(true); }
+    if (!admin) reenviarPendientes(true);
     S.version = { pedidos: null, productos: null };
     S.desde = { mis: null, todos: null };
     S.espera = ESPERA_MIN;
@@ -361,7 +452,7 @@
   function refrescar(forzar) {
     if ((document.hidden && !forzar) || !S.token || revisando) return Promise.resolve(false);
     // Pedidos que quedaron "Sin guardar" por la red: se reintentan solos (nunca duplican).
-    S.enviando.forEach(function (env) { if (env.estado === 'error' && env.transitorio) enviarEnFondo(env); });
+    reenviarPendientes();
     revisando = true;
     return api('version', {}, { silencioso: true }).then(function (v) {
       var prev = S.version || {};
@@ -681,7 +772,7 @@
     S.enviando = S.enviando.filter(function (env) {
       var p = porReq[env.reqId];
       if (!p) return true;
-      toast('Pedido #' + p.numero + ' (mesa ' + p.mesa + ') creado ✔', 'ok');
+      if (env.atrasado) avisoGuardado(p.numero, env); else toast('Pedido #' + p.numero + ' (mesa ' + p.mesa + ') creado ✔', 'ok');
       return false;
     });
   }
@@ -690,12 +781,12 @@
     env.estado = 'enviando'; env.error = '';
     renderMis();
     var n = turno('mis');
-    api('crear', Object.assign({}, env.datos, { reqId: env.reqId, desde: desdePara('mis') }), { silencioso: true })
+    return api('crear', Object.assign({}, env.datos, { reqId: env.reqId, desde: desdePara('mis') }), { silencioso: true })
       .then(function (r) {
         if (!S.token) return;
         var seguia = S.enviando.indexOf(env) >= 0;      // pudo resolverse antes por la lista
         S.enviando = S.enviando.filter(function (x) { return x !== env; });
-        if (seguia) toast('Pedido #' + r.numero + ' (mesa ' + env.datos.mesa + ') creado ✔', 'ok');
+        if (seguia) { if (env.atrasado) avisoGuardado(r.numero, env); else toast('Pedido #' + r.numero + ' (mesa ' + env.datos.mesa + ') creado ✔', 'ok'); }
         if (!aplicarLista('mis', r.lista, n)) { renderMis(); cargarMis(true); }
       })
       .catch(function (e) {
@@ -704,7 +795,12 @@
         env.estado = 'error';
         env.error = e.message;
         env.transitorio = !!e.transitorio;
-        toast('El pedido de mesa ' + env.datos.mesa + ' no se pudo guardar. Revísalo en "Mis pedidos".', 'mal');
+        // sin señal: avisa una sola vez (no en cada reintento)
+        if (!env.atrasado || !env.transitorio) {
+          toast(env.transitorio ? 'Sin señal: el pedido de mesa ' + env.datos.mesa + ' quedó guardado en el celular y se enviará solo.'
+                                : 'El pedido de mesa ' + env.datos.mesa + ' no se pudo guardar. Revísalo en "Mis pedidos".', 'mal');
+        }
+        env.atrasado = true;
         renderMis();
       });
   }
@@ -846,28 +942,36 @@
   }
 
   /** Productos activos desde el servidor; fresco = releer la planilla. */
+  function claveProd() { return 'comandas_productos'; }
+  function productosGuardados() {
+    try { var r = JSON.parse(localStorage.getItem(claveProd()) || 'null'); return r && Array.isArray(r.productos) ? r : null; } catch (e) { return null; }
+  }
   function cargarProductos(fresco) {
     return api('productos', fresco ? { fresco: true } : {}, { silencioso: true }).then(function (r) {
-      var antes = S.prodMap;               // nombres previos, para avisar qué se quitó
-      // la versión de productos viaja con la lista: así nunca se pierde un cambio ocurrido justo al entrar
-      if (r.version != null) { S.version = S.version || {}; S.version.productos = r.version; }
-      S.productos = r.productos;
-      if (Array.isArray(r.talonarios)) {
-        S.talonarios = r.talonarios; S.talMap = {}; S.talCargados = true;
-        r.talonarios.forEach(function (t) { S.talMap[t.n] = t.cajero; });
-        if (S.usuario && S.usuario.perfil !== 'admin') pintarTalonario();
-        else if (S.cargado.todos) renderAdmin();
-      }
-      S.prodMap = {};
-      r.productos.forEach(function (p) { S.prodMap[p.id] = p; });
-      // Productos que ya no están disponibles salen del pedido en curso (no al editar uno existente).
-      var quitados = [];
-      if (!S.edit) Object.keys(S.carrito).forEach(function (id) {
-        if (!S.prodMap[id]) { quitados.push(antes[id] ? antes[id].nombre : 'Producto ' + id); delete S.carrito[id]; }
-      });
-      if (S.usuario && S.usuario.perfil !== 'admin') { renderProductos(); actualizarCarrito(); }
-      return { total: r.productos.length, quitados: quitados };
+      try { localStorage.setItem(claveProd(), JSON.stringify({ productos: r.productos, talonarios: r.talonarios })); } catch (e) {}
+      return aplicarProductos(r);
     });
+  }
+  function aplicarProductos(r) {
+    var antes = S.prodMap;               // nombres previos, para avisar qué se quitó
+    // la versión de productos viaja con la lista: así nunca se pierde un cambio ocurrido justo al entrar
+    if (r.version != null) { S.version = S.version || {}; S.version.productos = r.version; }
+    S.productos = r.productos;
+    if (Array.isArray(r.talonarios)) {
+      S.talonarios = r.talonarios; S.talMap = {}; S.talCargados = true;
+      r.talonarios.forEach(function (t) { S.talMap[t.n] = t.cajero; });
+      if (S.usuario && S.usuario.perfil !== 'admin') pintarTalonario();
+      else if (S.cargado.todos) renderAdmin();
+    }
+    S.prodMap = {};
+    r.productos.forEach(function (p) { S.prodMap[p.id] = p; });
+    // Productos que ya no están disponibles salen del pedido en curso (no al editar uno existente).
+    var quitados = [];
+    if (!S.edit) Object.keys(S.carrito).forEach(function (id) {
+      if (!S.prodMap[id]) { quitados.push(antes[id] ? antes[id].nombre : 'Producto ' + id); delete S.carrito[id]; }
+    });
+    if (S.usuario && S.usuario.perfil !== 'admin') { renderProductos(); actualizarCarrito(); }
+    return { total: r.productos.length, quitados: quitados };
   }
 
   /*
@@ -892,7 +996,7 @@
       }, function (e) { toast('No se pudieron actualizar los productos: ' + e.message, 'mal'); });
     } else {
       // Pedidos "Sin guardar" por la red también se reintentan al actualizar.
-      S.enviando.forEach(function (env) { if (env.estado === 'error' && env.transitorio) enviarEnFondo(env); });
+      reenviarPendientes();
       p = (que === 'todos' ? cargarTodos(true, true) : cargarMis(true, true)).then(function (ok) {
         if (ok) toast('Pedidos actualizados (' + hhmm() + ') ✔', 'ok');
       });
@@ -931,6 +1035,7 @@
   }
 
   function renderMis() {
+    guardarPendientes(); pintarRed();
     var activos = S.mis.filter(function (p) { return pasaFiltro(p, 'activos'); }).length + S.enviando.length;
     $('#cntMis').textContent = activos;
     contarChips('#filtrosMis', S.mis);

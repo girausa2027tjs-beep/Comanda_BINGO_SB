@@ -55,9 +55,12 @@
         <strong id="lblUsuario"></strong>
         <span id="lblPerfil"></span>
       </div>
+      <span id="estadoRed" class="estado-red" role="status" aria-live="polite" hidden></span>
       <button class="btn btn-icono" id="btnImpresora" title="Impresora" hidden>🖨️<span class="solo-ancho"> Impresora</span></button>
       <button class="btn btn-icono" id="btnSalir" title="Salir">Salir</button>
     </header>
+
+    <div id="avisosGuardados" class="avisos-guardados" aria-live="polite"></div>
 
     <!-- -------- VENDEDOR -------- -->
     <main id="vistaVendedor" class="contenedor" hidden>
@@ -175,5 +178,11 @@
   <script src="assets/config.js"></script>
   <script src="assets/printer.js"></script>
   <script src="assets/app.js"></script>
+  <script>
+    // Guarda la app en el equipo para que abra aunque no haya señal.
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
+  </script>
 </body>
 </html>

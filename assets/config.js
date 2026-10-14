@@ -2,11 +2,11 @@
 // En Supabase: Project Settings → API (o "API Keys").
 window.APP_CONFIG = {
   // Project URL, por ejemplo: 'https://abcdefghijkl.supabase.co'
-  SUPABASE_URL: 'https://vkkkrkngailgiwnqgxbg.supabase.co',
+  SUPABASE_URL: '',
 
   // Clave PÚBLICA: "Publishable key" (sb_publishable_…) o la antigua "anon public".
   // ¡Nunca pongas aquí la "secret" ni la "service_role"!
-  SUPABASE_KEY: 'sb_publishable_wo1J4TcRrvLdMdBhDIh9tA_jHiAb-XP',
+  SUPABASE_KEY: '',
 
   // Cada cuántos segundos se revisa si hay cambios (consulta muy liviana).
   // Sin movimiento se va espaciando hasta REFRESCO_MAX_SEGUNDOS (cuida el plan gratuito).

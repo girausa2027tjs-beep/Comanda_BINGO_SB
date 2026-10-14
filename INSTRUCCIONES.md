@@ -9,7 +9,7 @@ Tiempo aproximado: 30 minutos. Necesitas tu proyecto de Supabase (ya creado) y u
 | `supabase/2_datos.sql` | Carga los 63 alumnos, los tipos de usuario y los 29 productos de la planilla. |
 | `supabase/3_pedidos_de_prueba.sql` | **Opcional.** Los 7 pedidos de prueba de la planilla. No hace falta. |
 | `supabase/extra_borrar_todos_los_pedidos.sql` | Deja los pedidos en cero antes del evento (con seguro). |
-| `index.html` y carpeta `assets/` | La página que se publica en GitHub Pages. |
+| `index.html`, `sw.js` y carpeta `assets/` | La página que se publica en GitHub Pages (`sw.js` permite abrirla sin señal). |
 
 ⚠️ **La carpeta `supabase/` NO se sube a GitHub**: `2_datos.sql` contiene los segundos apellidos, que son las contraseñas.
 
@@ -83,7 +83,7 @@ Guarda el archivo.
 **7. Crear el repositorio**
 1. En github.com → **New repository** → nombre, por ejemplo `comandas` → **Public** → **Create repository**.
 2. Clic en **uploading an existing file**.
-3. Arrastra **`index.html`** y la **carpeta `assets`** completa (no la carpeta `supabase`) → **Commit changes**.
+3. Arrastra **`index.html`**, **`sw.js`** y la **carpeta `assets`** completa (no la carpeta `supabase`) → **Commit changes**.
 
 **8. Activar la página**
 1. En el repositorio → **Settings** → **Pages**.
@@ -186,6 +186,21 @@ efectivo y transferencia: asígnalos a un cajero y sus ventas pasan a él. Si qu
 pedidos vuelven a esa lista.
 El talonario y su cajero salen también en las tarjetas de pedidos, en la comanda impresa y en el buscador del
 Administrador ("talonario 12" o el nombre del cajero).
+
+## Mala señal en el lugar
+- **Pedidos sin señal:** el pedido queda "⚠️ Sin guardar" **guardado en el celular** y se envía solo cuando vuelve
+  la señal, aunque se cierre o recargue la app (o se salga y se vuelva a entrar con el mismo alumno y tipo).
+  Nunca se duplica. **No hay que volver a hacerlo.**
+- **Número de pedido:** lo pone el servidor cuando el pedido llega. Cuando un pedido atrasado se guarda, aparece un
+  aviso grande en el celular del garzón: "**#35** Pedido de mesa 7 guardado ✔" (se cierra con OK). Los atrasados se
+  envían del más antiguo al más nuevo.
+- **Indicador arriba:** 🟢 En línea · 🟡 Enviando (n) · 🔴 Sin señal (n), donde n = pedidos por enviar.
+- **La app abre sin señal** si ya se abrió antes en ese celular: queda guardada junto con la sesión (12 h), los
+  productos y el talonario fijado. Para el primer ingreso sí se necesita señal.
+- **Antes del evento:** que cada garzón abra la app e ingrese con buena señal (así queda guardada en su celular).
+- **El computador de la impresora es el más importante:** la comanda sale cuando el pedido llega al servidor.
+  Ojalá con Wi-Fi propio o un celular con buena señal compartiendo internet solo para él.
+- Prueba antes la señal de las distintas compañías en el lugar.
 
 ## Durante el evento
 - Los pedidos y cambios aparecen solos en todas las pantallas (cada 4 s con movimiento, hasta 20 s si está quieto).

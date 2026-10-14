@@ -407,3 +407,17 @@ button.prod-dato:hover b { text-decoration: underline; }
   .linea-sub { grid-column: 2; grid-row: 1; }
   .linea .mini-stepper { grid-column: 1 / -1; }
 }
+
+/* ---------- Mala señal: indicador y avisos ---------- */
+.estado-red { font-size: .78rem; font-weight: 900; border-radius: 99px; padding: .25rem .6rem; white-space: nowrap; background: rgba(255,255,255,.12); color: #fff; }
+.estado-red.ok { color: #b8f5cf; }
+.estado-red.pend { background: var(--oro); color: var(--navy); }
+.estado-red.sin { background: var(--rojo); color: #fff; animation: latido 1.6s ease-in-out infinite; }
+@keyframes latido { 50% { opacity: .65; } }
+@media (max-width: 480px) { .estado-red.ok { font-size: 0; padding: 0; width: 10px; height: 10px; background: #3ddc84; } }
+.avisos-guardados { position: fixed; z-index: 40; top: 70px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: .5rem; pointer-events: none; padding: 0 12px; }
+.aviso-guardado { pointer-events: auto; width: min(520px, 100%); display: grid; grid-template-columns: auto 1fr auto; gap: .7rem; align-items: center;
+  background: #fff; border: 3px solid var(--verde); border-radius: 16px; padding: .6rem .8rem; box-shadow: 0 10px 30px rgba(15,40,93,.25); }
+.aviso-guardado .ag-num { font-family: var(--fuente-titulo); font-size: 2rem; color: var(--verde); line-height: 1; }
+.aviso-guardado .ag-txt { font-weight: 800; color: var(--navy); line-height: 1.2; }
+.aviso-guardado small { display: block; color: var(--gris); font-weight: 700; }
