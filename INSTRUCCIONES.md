@@ -179,8 +179,9 @@ tiene cajero, y cuando se lo asignes, sus ventas (también las anteriores) se su
 - Varios garzones pueden usar el mismo talonario.
 - El **nombre del cliente es opcional** (la mesa sigue siendo obligatoria).
 
-**Recaudación (🧾 Cajeros):** por cada cajero muestra pedidos, **Efectivo**, **Transferencia** y **Total**, y cuánto
-se vendió con cada talonario. Arriba sale la suma de todos. No cuentan los pedidos eliminados.
+**Recaudación (🧾 Cajeros):** por cada cajero muestra pedidos, **Efectivo**, **Transferencia** y **Total**, y debajo
+una tabla con lo recaudado **por talonario y por tipo de venta** (pedidos, efectivo, transferencia y total, con la
+fila de totales del cajero). Arriba sale la suma de todos. No cuentan los pedidos eliminados.
 Más abajo, **"Talonarios usados sin cajero"** lista los números que ya tienen ventas pero no tienen cajero, con su
 efectivo y transferencia: asígnalos a un cajero y sus ventas pasan a él. Si quitas un talonario a un cajero, sus
 pedidos vuelven a esa lista.
