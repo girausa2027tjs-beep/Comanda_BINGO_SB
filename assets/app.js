@@ -1678,12 +1678,7 @@
       var suma = function (k) { return cajeros.reduce(function (t, c) { return t + (c[k] || 0); }, 0); };
       $('#libresCaj').innerHTML = libres.length ? '<h4 class="form-prod-titulo libres-titulo">Talonarios usados sin cajero (' + libres.length + ')</h4>' +
         '<p class="nota">Asígnalos a un cajero (tócalo en la lista o crea uno nuevo) y sus ventas se sumarán a ese cajero.</p>' +
-        '<ul class="lista-prod-adm">' + libres.map(function (l) {
-          return '<li class="prod-fila libre-fila"><span class="tal-chip">N° ' + l.n + '</span>' +
-            '<span class="prod-dato"><small>' + l.pedidos + (l.pedidos === 1 ? ' pedido' : ' pedidos') + '</small>' +
-            '<span class="caj-montos"><span>💵 Efectivo <b>' + plata(l.efectivo) + '</b></span><span>🏦 Transf. <b>' + plata(l.transferencia) + '</b></span>' +
-            '<span>Total <b>' + plata(l.total) + '</b></span></span></span></li>';
-        }).join('') + '</ul>' : '';
+        '<div class="tarjeta libres-caja">' + tablaTalonarios(libres, null) + '</div>' : '';
       $('#resumenCaj').innerHTML = cajeros.length || libres.length ? kpi('Recaudado por cajeros', plata(suma('total'))) +
         kpi('Efectivo', plata(suma('efectivo'))) + kpi('Transferencia', plata(suma('transferencia'))) +
         (sinCajero && sinCajero.pedidos ? kpi('Sin cajero (' + sinCajero.pedidos + ')', plata(sinCajero.total)) : '') : '';
@@ -1701,12 +1696,27 @@
             '<small>' + esc(c.curso) + ' · ' + c.pedidos + (c.pedidos === 1 ? ' pedido' : ' pedidos') + '</small>' +
             '<span class="caj-montos"><span>💵 Efectivo <b>' + plata(c.efectivo) + '</b></span><span>🏦 Transf. <b>' + plata(c.transferencia) + '</b></span>' +
             '<span>Total <b>' + plata(c.total) + '</b></span></span></button>' +
-          '<span class="tal-chips">' + c.talonarios.map(function (t) {
-            var d = (c.detalle || []).filter(function (x) { return x.n === t; })[0];
-            return '<span class="tal-chip" title="' + (d ? d.pedidos + ' pedidos' : '') + '">N° ' + t + (d && d.total ? ' · ' + plata(d.total) : '') + '</span>';
-          }).join('') + '</span></li>';
+          tablaTalonarios(c.talonarios.map(function (t) {
+            return (c.detalle || []).filter(function (x) { return x.n === t; })[0] || { n: t, pedidos: 0, efectivo: 0, transferencia: 0, total: 0 };
+          }), c) + '</li>';
       }).join('') : '<li class="vacio">' + (cajeros.length ? 'Ningún cajero coincide con la búsqueda.'
         : 'Aún no hay cajeros móviles.<br>Crea el primero con «＋ Nuevo cajero móvil».') + '</li>';
+    }
+
+    // Recaudación por talonario: pedidos, efectivo, transferencia y total (con fila de totales).
+    function tablaTalonarios(filas, c) {
+      if (!filas.length) return '';
+      var fila = function (n, d, cls) {
+        return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + n + '</td><td class="r">' + d.pedidos + '</td>' +
+          '<td class="r">' + plata(d.efectivo) + '</td><td class="r">' + plata(d.transferencia) + '</td><td class="r"><b>' + plata(d.total) + '</b></td></tr>';
+      };
+      var tot = filas.reduce(function (a, d) {
+        return { pedidos: a.pedidos + d.pedidos, efectivo: a.efectivo + d.efectivo, transferencia: a.transferencia + d.transferencia, total: a.total + d.total };
+      }, { pedidos: 0, efectivo: 0, transferencia: 0, total: 0 });
+      return '<div class="tabla-tal-caja"><table class="tabla-tal"><thead><tr><th>Talonario</th><th class="r">Ped.</th>' +
+        '<th class="r">Efectivo</th><th class="r">Transf.</th><th class="r">Total</th></tr></thead><tbody>' +
+        filas.map(function (d) { return fila('N° ' + d.n, d, d.pedidos ? '' : 'sin-ventas'); }).join('') +
+        (filas.length > 1 ? fila('Total', tot, 'total') : '') + '</tbody></table></div>';
     }
 
     function abrirForm(c) {

@@ -421,3 +421,21 @@ button.prod-dato:hover b { text-decoration: underline; }
 .aviso-guardado .ag-num { font-family: var(--fuente-titulo); font-size: 2rem; color: var(--verde); line-height: 1; }
 .aviso-guardado .ag-txt { font-weight: 800; color: var(--navy); line-height: 1.2; }
 .aviso-guardado small { display: block; color: var(--gris); font-weight: 700; }
+
+/* ---------- Recaudación por talonario ---------- */
+.caj-fila { grid-template-columns: 46px 1fr; }
+.caj-fila .tabla-tal-caja { grid-column: 1 / -1; }
+.tabla-tal-caja { overflow-x: auto; margin-top: .4rem; }
+.tabla-tal { width: 100%; border-collapse: collapse; font-size: .85rem; font-weight: 700; color: var(--texto); }
+.tabla-tal th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .3px; color: var(--gris); font-weight: 800; padding: .25rem .4rem; border-bottom: 2px solid var(--linea); white-space: nowrap; }
+.tabla-tal td { padding: .3rem .4rem; border-bottom: 1px solid var(--crema); white-space: nowrap; }
+.tabla-tal .r { text-align: right; }
+.tabla-tal td:first-child { font-weight: 900; color: var(--navy); }
+.tabla-tal tr.sin-ventas td { color: var(--gris); font-weight: 600; }
+.tabla-tal tr.total td { border-top: 2px solid var(--navy); border-bottom: 0; font-weight: 900; color: var(--navy); }
+.libres-caja { padding: .4rem .7rem; }
+@media (max-width: 560px) {
+  .tabla-tal { font-size: .78rem; }
+  .tabla-tal th, .tabla-tal td { padding: .28rem .2rem; }
+  .tabla-tal th { font-size: .66rem; letter-spacing: 0; }
+}
