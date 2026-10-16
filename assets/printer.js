@@ -226,13 +226,18 @@
     e.tam(2, 2);
     if (p.cliente) partir(p.cliente, Math.floor(w / 2)).forEach(function (l) { e.ln(l); });
     e.tam(1, 1).negrita(false);
+    // Vendedor en grande, entre líneas dobles (bien visible para entregar el pedido)
+    e.ln('='.repeat(w)).negrita(true).ln('VENDE').tam(2, 2);
+    partir(p.usuario, Math.floor(w / 2)).forEach(function (l) { e.ln(l); });
+    e.tam(1, 1);
+    if (p.tipoUsuario && p.tipoUsuario !== 'Alumno') e.tam(1, 2).ln('(' + p.tipoUsuario + ')').tam(1, 1);
+    e.negrita(false).ln('='.repeat(w));
     if (p.comentario) {
       e.alin(0).ln('-'.repeat(w)).negrita(true).tam(1, 2);
       partir('NOTA: ' + p.comentario, w).forEach(function (l) { e.ln(l); });
       e.tam(1, 1).negrita(false).ln('-'.repeat(w)).alin(1);
     }
     e.ln(p.fecha + '  ' + p.hora);
-    e.ln('Vende: ' + p.usuario + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + p.tipoUsuario + ')' : ''));
     e.ln('Pago: ' + p.tipoVenta);
     if (p.talonario) e.negrita(true).ln('Talonario N. ' + p.talonario).negrita(false);
     e.alin(0).ln('-'.repeat(w));
@@ -285,9 +290,10 @@
       '<div class="c num">#' + esc(p.numero) + '</div>' +
       '<div class="c mesa">MESA ' + esc(p.mesa) + '</div>' +
       (p.cliente ? '<div class="c cli">' + esc(p.cliente) + '</div>' : '') +
+      '<div class="c vende"><small>VENDE</small><b>' + esc(p.usuario) + '</b>' +
+        (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? '<span>(' + esc(p.tipoUsuario) + ')</span>' : '') + '</div>' +
       (p.comentario ? '<div class="nota-t">NOTA: ' + esc(p.comentario) + '</div>' : '') +
       '<div class="c">' + esc(p.fecha) + ' ' + esc(p.hora) + '</div>' +
-      '<div class="c">Vende: ' + esc(p.usuario) + (p.tipoUsuario && p.tipoUsuario !== 'Alumno' ? ' (' + esc(p.tipoUsuario) + ')' : '') + '</div>' +
       '<div class="c">Pago: ' + esc(p.tipoVenta) + '</div>' +
       (p.talonario ? '<div class="c b">Talonario N° ' + esc(p.talonario) + '</div>' : '') +
       '<div class="sep"></div><table>' + filas + '</table><div class="sep"></div>' +
