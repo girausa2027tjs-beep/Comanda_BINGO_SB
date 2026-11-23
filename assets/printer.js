@@ -28,6 +28,16 @@
     '0000fee7-0000-1000-8000-00805f9b34fb'
   ];
 
+  // Canales de impresión conocidos (se prefieren sobre cualquier otro canal con escritura).
+  var BLE_IMPRESION = [
+    '00002af1-0000-1000-8000-00805f9b34fb',          // servicio 18f0 (la mayoría de las POS-58 BT)
+    'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f',          // servicio e7810a71
+    '49535343-8841-43f4-a8d4-ecbe34729bb3',          // servicio ISSC 49535343
+    '0000ff02-0000-1000-8000-00805f9b34fb'           // servicio ff00
+  ];
+  // Bloques chicos: funcionan en todos los equipos (muchas tablets solo aceptan 20 bytes por envío).
+  var BLE_BLOQUE = 20, BLE_PAUSA = 12;
+
   function leer() { try { return JSON.parse(localStorage.getItem(CLAVE) || '{}'); } catch (e) { return {}; } }
   function guardar(nuevo) {
     var cambioModo = nuevo.modo && nuevo.modo !== cfg.modo;
@@ -55,7 +65,7 @@
   function conectar(pedirNueva) {
     if (cfg.modo === 'usb') return conectarUSB(pedirNueva);
     if (cfg.modo === 'serial') return conectarSerial(pedirNueva);
-    if (cfg.modo === 'bluetooth') return conectarBLE();
+    if (cfg.modo === 'bluetooth') return conectarBLE(pedirNueva);
     return Promise.resolve();
   }
 
@@ -96,29 +106,59 @@
     };
   }
 
-  async function conectarBLE() {
-    if (!navigator.bluetooth) throw new Error('Web Bluetooth no disponible en este navegador.');
-    var d = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICIOS });
-    var gatt = await d.gatt.connect();
-    var car = null;
+  /*
+   * Bluetooth (BLE). Para que funcione igual en celulares y tablets:
+   *  - se elige el canal de impresión conocido (no el primero que aparezca);
+   *  - se envía en bloques de 20 bytes con una pausa corta;
+   *  - si la conexión se corta (la tablet duerme), se reconecta sola a la misma
+   *    impresora sin tener que tocar "Conectar" (el navegador lo permite porque
+   *    la impresora ya fue elegida antes).
+   */
+  var bleDisp = null;
+  async function canalBLE(d) {
+    var gatt = d.gatt.connected ? d.gatt : await d.gatt.connect();
     var servicios = await gatt.getPrimaryServices();
-    for (var s = 0; s < servicios.length && !car; s++) {
+    var candidatos = [];
+    for (var s = 0; s < servicios.length; s++) {
       var cs = await servicios[s].getCharacteristics();
       for (var c = 0; c < cs.length; c++) {
-        if (cs[c].properties.write || cs[c].properties.writeWithoutResponse) { car = cs[c]; break; }
+        var pr = cs[c].properties;
+        if (pr.write || pr.writeWithoutResponse) candidatos.push(cs[c]);
       }
     }
-    if (!car) throw new Error('La impresora Bluetooth no expone un canal de escritura conocido.');
-    disp = d;
-    d.addEventListener('gattserverdisconnected', function () { escribir = null; });
-    escribir = async function (bytes) {
-      for (var i = 0; i < bytes.length; i += 180) {
-        var trozo = bytes.slice(i, i + 180);
-        if (car.properties.writeWithoutResponse && car.writeValueWithoutResponse) await car.writeValueWithoutResponse(trozo);
+    if (!candidatos.length) throw new Error('La impresora Bluetooth no tiene un canal de impresión conocido.');
+    var prio = function (ch) {
+      var k = BLE_IMPRESION.indexOf(String(ch.uuid).toLowerCase());
+      if (k >= 0) return k;
+      var j = BLE_SERVICIOS.indexOf(String(ch.service && ch.service.uuid).toLowerCase());
+      return j >= 0 ? 10 + j : 100;
+    };
+    candidatos.sort(function (a, b) { return prio(a) - prio(b); });
+    return candidatos[0];
+  }
+  function escritorBLE(car) {
+    var sinRespuesta = car.properties.writeWithoutResponse && car.writeValueWithoutResponse;
+    return async function (bytes) {
+      for (var i = 0; i < bytes.length; i += BLE_BLOQUE) {
+        var trozo = bytes.slice(i, i + BLE_BLOQUE);
+        if (sinRespuesta) await car.writeValueWithoutResponse(trozo);
+        else if (car.writeValueWithResponse) await car.writeValueWithResponse(trozo);
         else await car.writeValue(trozo);
-        await new Promise(function (r) { setTimeout(r, 25); });
+        await new Promise(function (r) { setTimeout(r, BLE_PAUSA); });
       }
     };
+  }
+  async function conectarBLE(pedirNueva) {
+    if (!navigator.bluetooth) throw new Error('Este navegador no tiene Bluetooth web. En Android usa Google Chrome; en iPad/iPhone usa la app «Bluefy».');
+    var d = pedirNueva ? null : bleDisp;
+    if (!d && !pedirNueva && navigator.bluetooth.getDevices) {
+      try { var ya = await navigator.bluetooth.getDevices(); d = ya[0] || null; } catch (e) { d = null; }
+    }
+    if (!d) d = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICIOS });
+    var car = await canalBLE(d);
+    if (bleDisp !== d) d.addEventListener('gattserverdisconnected', function () { escribir = null; });
+    bleDisp = d; disp = d;
+    escribir = escritorBLE(car);
   }
 
   function desconectar() {
@@ -126,7 +166,7 @@
       if (disp && disp.close) disp.close();
       if (disp && disp.gatt && disp.gatt.connected) disp.gatt.disconnect();
     } catch (e) { /* nada */ }
-    disp = null; escribir = null;
+    disp = null; escribir = null; bleDisp = null;
   }
 
   /* ---------------- Ticket ESC/POS ---------------- */
@@ -315,14 +355,22 @@
 
   async function imprimir(p, opts) {
     if (cfg.modo === 'navegador') return imprimirNavegador(p, opts);
-    if (!escribir) await conectar(false);
     try {
-      await escribir(ticketEscPos(p, opts));
-    } catch (err) {
-      // reintento único reconectando (la impresora pudo apagarse o dormirse)
-      desconectar();
-      await conectar(false);
-      await escribir(ticketEscPos(p, opts));
+      if (!escribir) await conectar(false);
+      try {
+        await escribir(ticketEscPos(p, opts));
+      } catch (err) {
+        // reintento único reconectando (la impresora pudo apagarse o dormirse)
+        if (cfg.modo === 'bluetooth') { escribir = null; } else desconectar();
+        await conectar(false);
+        await escribir(ticketEscPos(p, opts));
+      }
+    } catch (e) {
+      // sin un toque del usuario el navegador no deja elegir impresora: se explica qué hacer
+      if (e && (e.name === 'SecurityError' || e.name === 'NotFoundError' || /gesture|user/i.test(e.message || ''))) {
+        throw new Error('La impresora no está conectada en este equipo. Toca 🖨️ Impresora → Conectar y elige la impresora.');
+      }
+      throw e;
     }
   }
 
@@ -333,6 +381,11 @@
       items: [{ cantidad: 2, nombre: 'Producto de ejemplo', subtotal: 2000 }], total: 2000
     }, {});
   }
+
+  // La tablet o el celular apagan el Bluetooth al bloquear la pantalla: al volver, se reconecta sola.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && cfg.modo === 'bluetooth' && bleDisp && !escribir) conectarBLE(false).catch(function () {});
+  });
 
   window.Impresora = {
     config: function () { return Object.assign({}, cfg); },
